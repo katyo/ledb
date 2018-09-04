@@ -1,12 +1,14 @@
 use std::sync::{Arc};
-use std::iter::once;
+//use std::iter::once;
+use std::collections::HashSet;
 use std::str::from_utf8;
 use std::mem::transmute;
 use byteorder::{ByteOrder, NativeEndian};
 use ron::ser::to_string as to_db_name;
-use lmdb::{Environment, put::Flags as PutFlags, Database, DatabaseOptions, ReadTransaction, WriteTransaction, Unaligned};
+use lmdb::{Environment, put::Flags as PutFlags, Database, DatabaseOptions, ReadTransaction, ConstAccessor, WriteAccessor, Unaligned, MaybeOwned, Cursor, CursorIter, LmdbResultExt};
 
-use types::{Id, Document, document_field, ResultWrap, NOT_FOUND};
+use types::{document_field, ResultWrap, NOT_FOUND};
+use document::{Primary, Document, Value};
 use storage::{DatabaseDef};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -39,6 +41,8 @@ impl Default for IndexType {
     fn default() -> Self { IndexType::Binary }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
 pub enum IndexData {
     UInt(u64),
     Int(i64),
@@ -80,6 +84,14 @@ impl IndexData {
     }
 }
 
+/*
+#[derive(Debug, Clone)]
+pub enum IndexQuery {
+    Set(Vec<IndexData>),
+    Range(Option<IndexData>, Option<IndexData>),
+}
+*/
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct IndexDef (
     /// Collection name
@@ -109,11 +121,11 @@ impl Index {
             (IndexKind::Unique, IndexType::String) => DatabaseOptions::create_map::<str>(),
             (IndexKind::Unique, IndexType::Binary) => DatabaseOptions::create_map::<[u8]>(),
             (IndexKind::Unique, IndexType::Bool) => DatabaseOptions::create_map::<u8>(),
-            (IndexKind::Duplicate, IndexType::UInt) => DatabaseOptions::create_multimap::<Unaligned<u64>, Unaligned<Id>>(),
-            (IndexKind::Duplicate, IndexType::Int) => DatabaseOptions::create_multimap::<Unaligned<i64>, Unaligned<Id>>(),
-            (IndexKind::Duplicate, IndexType::String) => DatabaseOptions::create_multimap::<str, Unaligned<Id>>(),
-            (IndexKind::Duplicate, IndexType::Binary) => DatabaseOptions::create_multimap::<[u8], Unaligned<Id>>(),
-            (IndexKind::Duplicate, IndexType::Bool) => DatabaseOptions::create_multimap::<u8, Unaligned<Id>>(),
+            (IndexKind::Duplicate, IndexType::UInt) => DatabaseOptions::create_multimap::<Unaligned<u64>, Unaligned<Primary>>(),
+            (IndexKind::Duplicate, IndexType::Int) => DatabaseOptions::create_multimap::<Unaligned<i64>, Unaligned<Primary>>(),
+            (IndexKind::Duplicate, IndexType::String) => DatabaseOptions::create_multimap::<str, Unaligned<Primary>>(),
+            (IndexKind::Duplicate, IndexType::Binary) => DatabaseOptions::create_multimap::<[u8], Unaligned<Primary>>(),
+            (IndexKind::Duplicate, IndexType::Bool) => DatabaseOptions::create_multimap::<u8, Unaligned<Primary>>(),
         };
         
         let db = Arc::new(Database::open(
@@ -122,42 +134,80 @@ impl Index {
         
         Ok(Self { path, kind, key, db })
     }
-    
-    pub fn add(&self, txn: &mut WriteTransaction, data: &Vec<(Id, Vec<IndexData>)>) -> Result<(), String> {
-        if data.len() == 0 {
-            return Ok(());
-        }
-        
-        let txn = txn.child_tx().wrap_err()?;
 
-        {
-            let mut access = txn.access();
-            let f = PutFlags::empty();
-            
-            for (key, vals) in data {
-                for val in vals {
-                    access.put(&self.db, val.into_raw(), &Unaligned::new(*key), f)
-                      .wrap_err()?;
+    pub fn add_to_index(&self, access: &mut WriteAccessor, doc: &Document) -> Result<(), String> {
+        let id = doc.get_id().ok_or_else(|| "Missing document id".to_string())?;
+        let f = PutFlags::empty();
+        
+        for key in self.extract(doc) {
+            access.put(&self.db, key.into_raw(), &Unaligned::new(id), f)
+                  .wrap_err()?;
+        }
+
+        Ok(())
+    }
+
+    pub fn remove_from_index(&self, access: &mut WriteAccessor, doc: &Document) -> Result<(), String> {
+        let id = doc.get_id().ok_or_else(|| "Missing document id".to_string())?;
+        
+        for key in self.extract(doc) {
+            access.del_item(&self.db, key.into_raw(), &Unaligned::new(id))
+                  .wrap_err()?;
+        }
+
+        Ok(())
+    }
+
+    fn extract(&self, doc: &Document) -> Vec<IndexData> {
+        let mut keys = Vec::new();
+        let path = self.path.split('.');
+        extract_field_values(doc.get_data(), &self.key, &path, &mut keys);
+        keys
+    }
+
+    pub fn query_set<'a, I: Iterator<Item = &'a IndexData>>(&self, txn: &ReadTransaction, access: &ConstAccessor, keys: I) -> Result<HashSet<Primary>, String> {
+        let mut out = HashSet::new();
+        
+        for key in keys {
+            if let Some(key) = get_index_data(&self.key, key) {
+                let mut cursor = txn.cursor(self.db.clone()).wrap_err()?;
+
+                match self.kind {
+                    IndexKind::Unique => {
+                        match cursor.seek_k_both::<[u8], Unaligned<Primary>>(&access, key.into_raw()).to_opt() {
+                            Ok(Some((_key, id))) => { out.insert(id.get()); },
+                            Err(e) => return Err(e).wrap_err(),
+                            _ => (),
+                        }
+                    },
+                    IndexKind::Duplicate => {
+                        match cursor.seek_k::<[u8], Unaligned<Primary>>(&access, key.into_raw()).to_opt() {
+                            Ok(Some(..)) => (),
+                            Ok(None) => continue,
+                            Err(e) => return Err(e).wrap_err(),
+                        }
+                        
+                        for res in CursorIter::new(MaybeOwned::Owned(cursor), &access,
+                                                   |c, a| c.get_multiple::<[Unaligned<Primary>]>(&a),
+                                                   Cursor::next_multiple::<[Unaligned<Primary>]>)
+                            .wrap_err()?
+                        {
+                            if let Some(ids) = res.to_opt().wrap_err()? {
+                                for id in ids {
+                                    out.insert(id.get());
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
 
-        txn.commit().wrap_err()?;
-        
-        Ok(())
-    }
-
-    //pub fn del(&self, 
-
-    pub fn extract(&self, doc: &Document) -> Vec<IndexData> {
-        let mut keys = Vec::new();
-        let path = self.path.split('.');
-        extract_field_values(doc, &self.key, &path, &mut keys);
-        keys
+        Ok(out)
     }
 }
 
-fn extract_field_values<'a, 'i: 'a, I: Iterator<Item = &'i str> + Clone>(doc: &'a Document, typ: &IndexType, path: &'a I, keys: &mut Vec<IndexData>) {
+fn extract_field_values<'a, 'i: 'a, I: Iterator<Item = &'i str> + Clone>(doc: &'a Value, typ: &IndexType, path: &'a I, keys: &mut Vec<IndexData>) {
     let mut sub_path = path.clone();
     if let Some(ref name) = sub_path.next() {
         use serde_cbor::Value::*;
@@ -173,7 +223,7 @@ fn extract_field_values<'a, 'i: 'a, I: Iterator<Item = &'i str> + Clone>(doc: &'
     }
 }
 
-fn extract_field_primitives(doc: &Document, typ: &IndexType, keys: &mut Vec<IndexData>) {
+fn extract_field_primitives(doc: &Value, typ: &IndexType, keys: &mut Vec<IndexData>) {
     use serde_cbor::Value::*;
     match (typ, doc) {
         (IndexType::UInt, U64(val)) => keys.push(IndexData::UInt(*val)),
@@ -183,5 +233,17 @@ fn extract_field_primitives(doc: &Document, typ: &IndexType, keys: &mut Vec<Inde
         (IndexType::Bool, Bool(val)) => keys.push(IndexData::Bool(*val)),
         (_, Array(val)) => val.iter().for_each(|doc| extract_field_primitives(doc, typ, keys)),
         _ => (),
+    }
+}
+
+fn get_index_data<'a>(typ: &IndexType, val: &'a IndexData) -> Option<&'a IndexData> {
+    use self::IndexData::*;
+    match (typ, val) {
+        (IndexType::UInt, UInt(..)) => Some(val),
+        (IndexType::Int, Int(..)) => Some(val),
+        (IndexType::Binary, Binary(..)) => Some(val),
+        (IndexType::String, String(..)) => Some(val),
+        (IndexType::Bool, Bool(..)) => Some(val),
+        _ => None,
     }
 }

@@ -12,21 +12,23 @@ mod storage;
 mod collection;
 mod index;
 mod filter;
+mod document;
 
-pub use types::{Id, Document, Binary, ResultWrap, NOT_FOUND};
+pub use types::{ResultWrap, NOT_FOUND};
+pub use document::{Primary, Document, Value};
 pub use storage::{Storage};
 pub use collection::{Collection};
-pub use index::{Index, IndexKind, IndexType};
-pub use filter::{Filter, Atom, Comp, Cond};
+pub use index::{Index, IndexKind, IndexType, IndexData};
+pub use filter::{Filter, Comp, Cond};
 
 #[cfg(test)]
 mod test {
     use std::fs::remove_dir_all;
-    use super::{Id, Storage, IndexKind, IndexType};
+    use std::collections::HashSet;
+    use super::{Storage, IndexKind, IndexType, Document, Filter, Comp, IndexData};
 
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     pub struct UserData {
-        pub _id: Option<Id>,
         pub name: String,
         pub hash: Option<Vec<u8>>,
         pub view: bool,
@@ -35,7 +37,7 @@ mod test {
 
     impl Default for UserData {
         fn default() -> Self {
-            Self { _id: None, name: "".into(), hash: None, view: false, prefs: UserPrefs::default() }
+            Self { name: "".into(), hash: None, view: false, prefs: UserPrefs::default() }
         }
     }
 
@@ -67,13 +69,13 @@ mod test {
         let i1 = coll.insert(&u1).unwrap();
 
         assert_eq!(i1, 1);
-
-        let mut u1_ = u1.clone();
-        u1_._id = Some(1);
         
-        assert_eq!(coll.get(i1).unwrap(), Some(u1_));
+        assert_eq!(coll.get(i1).unwrap(), Some(Document::new_with_id(i1, u1)));
 
-        assert!(false);
+        assert_eq!(coll.find(Filter::Comp("name".into(), Comp::Eq(IndexData::String("kayo".into())))).unwrap(),
+                   HashSet::new());
+
+        //assert!(false);
 
         remove_dir_all(DB_DIR).unwrap();
     }

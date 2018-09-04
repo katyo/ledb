@@ -1,11 +1,12 @@
 use std::fmt::Display;
-use serde_cbor::{Value, ObjectKey};
+use serde::{Serialize, de::DeserializeOwned};
+use serde_cbor::{self, Value, ObjectKey};
 use lmdb::error::Error as LmdbError;
 use lmdbffi;
 
-pub type Id = i64;
-pub type Document = Value;
-pub type Binary = Vec<u8>;
+//pub type Id = i64;
+//pub type Document = Value;
+//pub type Binary = Vec<u8>;
 pub type Field = ObjectKey;
 
 pub const NOT_FOUND: LmdbError = LmdbError::Code(lmdbffi::MDB_NOTFOUND);

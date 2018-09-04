@@ -6,8 +6,10 @@ use ron::ser::to_string as to_db_name;
 use serde_cbor::{self, Value, ObjectKey};
 use lmdb::{Environment, put::Flags as PutFlags, Database, DatabaseOptions, ReadTransaction, WriteTransaction, Cursor, CursorIter, MaybeOwned, Unaligned};
 
-use types::{Id, Document, ResultWrap, NOT_FOUND};
+use types::{ResultWrap, NOT_FOUND};
+use document::{Primary, Document};
 use index::{IndexDef, Index, IndexKind, IndexType};
+use filter::{Filter, Cond, Comp};
 use storage::{DatabaseDef};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -35,7 +37,7 @@ impl Collection {
         
         let CollectionDef(name) = def;
 
-        let db_opts = DatabaseOptions::create_map::<Unaligned<Id>>();
+        let db_opts = DatabaseOptions::create_map::<Unaligned<Primary>>();
         
         let db = Arc::new(Database::open(
             env.clone(), Some(&db_name), &db_opts)
@@ -52,63 +54,110 @@ impl Collection {
         Ok(Self { name, indexes, env, db })
     }
     
-    pub fn insert<D: Serialize>(&self, doc: &D) -> Result<Id, String> {
-        let doc = match serde_cbor::to_value(doc).wrap_err()? {
-            Value::Object(mut val) => {
-                val.remove(&ObjectKey::String("_id".into()));
-                Value::Object(val)
-            },
-            _ => return Err("Document must be an object".into()),
-        };
-        
+    pub fn insert<T: Serialize>(&self, doc: &T) -> Result<Primary, String> {
         let id = self.last_id()? + 1;
 
-        let mut txn = self.write_txn()?;
-
-        {
-            let mut access = txn.access();
-            let val = serde_cbor::to_vec(&doc).wrap_err()?;
-            
-            access.put(&self.db, &Unaligned::new(id), &val, PutFlags::empty())
-                  .wrap_err()?;
-        }
-
-        let indexes = self.indexes.read().wrap_err()?;
-
-        for index in indexes.iter() {
-            let vals = index.extract(&doc);
-            index.add(&mut txn, &vec![(id, vals)])?;
-        }
-
-        txn.commit().wrap_err()?;
+        self.put(&Document::new(doc).with_id(id))?;
 
         Ok(id)
     }
 
-    pub fn get<T: DeserializeOwned>(&self, id: Id) -> Result<Option<T>, String> {
+    pub fn find(&self, filter: Filter) -> /*ListIterator*/ Result<HashSet<Primary>, String> {
+        let txn = self.read_txn()?;
+        let access = txn.access();
+        
+        match filter {
+            Filter::Comp(path, Comp::Eq(val)) => {
+                if let Some(index) = self.get_index(path)? {
+                    return Ok(index.query_set(&txn, &access, once(&val))?)
+                }
+            },
+            _ => (),
+        }
+
+        Ok(HashSet::new())
+    }
+
+    pub fn has(&self, id: Primary) -> Result<bool, String> {
         let txn = self.read_txn()?;
         let access = txn.access();
 
-        match access.get::<Unaligned<Id>, [u8]>(&self.db, &Unaligned::new(id)) {
-            Ok(val) => match serde_cbor::from_slice(val).wrap_err()? {
-                Value::Object(mut val) => {
-                    val.insert(ObjectKey::String("_id".into()), Value::I64(id));
-                    Ok(Some(serde_cbor::from_value(Value::Object(val))
-                    .wrap_err()?))
-                },
-                _ => Err("Corrupted data".into())
-            },
+        match access.get::<Unaligned<Primary>, [u8]>(&self.db, &Unaligned::new(id)) {
+            Ok(_val) => Ok(true),
+            Err(NOT_FOUND) => Ok(false),
+            Err(e) => Err(e).wrap_err(),
+        }
+    }
+
+    pub fn get<T: DeserializeOwned>(&self, id: Primary) -> Result<Option<Document<T>>, String> {
+        let txn = self.read_txn()?;
+        let access = txn.access();
+
+        match access.get::<Unaligned<Primary>, [u8]>(&self.db, &Unaligned::new(id)) {
+            Ok(val) => Ok(Some(Document::from_raw(val)?.with_id(id))),
             Err(NOT_FOUND) => Ok(None),
             Err(e) => Err(e).wrap_err(),
         }
     }
 
-    pub fn last_id(&self) -> Result<Id, String> {
+    pub fn put<T: Serialize>(&self, doc: &Document<T>) -> Result<(), String> {
+        if !doc.has_id() {
+            return Err("Document id is missing".into());
+        }
+
+        let id = doc.get_id().unwrap();
+        let doc = doc.into_gen()?;
+        
+        let txn = self.write_txn()?;
+
+        {
+            let mut access = txn.access();
+            let val = doc.into_raw()?;
+            
+            access.put(&self.db, &Unaligned::new(id), &val, PutFlags::empty())
+                  .wrap_err()?;
+        }
+
+        self.remove_from_indexes(&txn, id)?;
+        self.add_to_indexes(&txn, &doc)?;
+
+        txn.commit().wrap_err()?;
+
+        Ok(())
+    }
+
+    fn remove_from_indexes(&self, txn: &WriteTransaction, old_id: Primary) -> Result<(), String> {
+        if let Some(old_doc) = self.get(old_id)? {
+            let indexes = self.indexes.read().wrap_err()?;
+
+            let mut access = txn.access();
+            
+            for index in indexes.iter() {
+                index.remove_from_index(&mut access, &old_doc)?;
+            }
+        }
+
+        Ok(())
+    }
+
+    fn add_to_indexes(&self, txn: &WriteTransaction, new_doc: &Document) -> Result<(), String> {
+        let indexes = self.indexes.read().wrap_err()?;
+
+        let mut access = txn.access();
+        
+        for index in indexes.iter() {
+            index.add_to_index(&mut access, &new_doc)?;
+        }
+
+        Ok(())
+    }
+
+    pub fn last_id(&self) -> Result<Primary, String> {
         let txn = ReadTransaction::new(self.env.clone()).wrap_err()?;
         let mut cursor = txn.cursor(self.db.clone()).wrap_err()?;
         let access = txn.access();
         
-        Ok(match cursor.last::<Unaligned<Id>, [u8]>(&access) {
+        Ok(match cursor.last::<Unaligned<Primary>, [u8]>(&access) {
             Ok((key, _val)) => key.get(),
             Err(NOT_FOUND) => 0,
             Err(e) => return Err(e).wrap_err(),
@@ -139,23 +188,23 @@ impl Collection {
         }
 
         {
-            let txn = self.read_txn()?;
-            let cursor = txn.cursor(self.db.clone()).wrap_err()?;
-            let access = txn.access();
-            
-            let data = CursorIter::new(MaybeOwned::Owned(cursor), &access,
-                                       |c, a| c.first(a), Cursor::next::<Unaligned<Id>, [u8]>)
-                .wrap_err()?
-                .map(|res| res.wrap_err().and_then(|(key, val)| {
-                    let doc = serde_cbor::from_slice(val).wrap_err()?;
-                    Ok((key.get(), index.extract(&doc)))
-                }))
-                .collect::<Result<Vec<_>, _>>()
-                .wrap_err()?;
+            let txn = self.write_txn()?;
+            {
+                let mut access = txn.access();
 
-            let mut txn = self.write_txn()?;
-            
-            index.add(&mut txn, &data).wrap_err()?;
+                let txn2 = self.read_txn()?;
+                let cursor2 = txn2.cursor(self.db.clone()).wrap_err()?;
+                let access2 = txn2.access();
+                
+                for res in CursorIter::new(MaybeOwned::Owned(cursor2), &access2,
+                                           |c, a| c.first(a), Cursor::next::<Unaligned<Primary>, [u8]>)
+                    .wrap_err()?
+                {
+                    let (key, val) = res.wrap_err()?;
+                    let doc = Document::from_raw(val)?.with_id(key.get());
+                    index.add_to_index(&mut access, &doc)?;
+                }
+            }
 
             txn.commit().wrap_err()?;
         }
@@ -185,6 +234,13 @@ impl Collection {
         //index.db.delete().wrap_err()?;
 
         Ok(true)
+    }
+
+    fn get_index<P: AsRef<str>>(&self, path: P) -> Result<Option<Arc<Index>>, String> {
+        let path = path.as_ref();
+        let indexes = self.indexes.read().wrap_err()?;
+        
+        Ok(indexes.iter().find(|index| index.path == path).map(Clone::clone))
     }
 
     fn read_txn(&self) -> Result<ReadTransaction, String> {

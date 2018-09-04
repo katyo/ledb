@@ -4,7 +4,7 @@ use std::sync::{Arc, RwLock};
 use ron::de::from_str as from_db_name;
 use lmdb::{EnvBuilder, Environment, open::Flags as OpenFlags, Database, DatabaseOptions, ReadTransaction, Cursor, CursorIter, MaybeOwned};
 
-pub use types::{Id, Document, Binary, ResultWrap, NOT_FOUND};
+pub use types::{ResultWrap, NOT_FOUND};
 pub use collection::{CollectionDef, Collection};
 pub use index::{IndexDef, Index, IndexKind};
 

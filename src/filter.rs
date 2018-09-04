@@ -1,3 +1,4 @@
+/*
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum Atom {
@@ -5,6 +6,8 @@ pub enum Atom {
     Int(i64),
     String(String),
 }
+ */
+use index::IndexData as Atom;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Comp {
