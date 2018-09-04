@@ -8,8 +8,8 @@ use lmdb::{Environment, put::Flags as PutFlags, Database, DatabaseOptions, ReadT
 
 use types::{ResultWrap, NOT_FOUND};
 use document::{Primary, Document};
-use index::{IndexDef, Index, IndexKind, IndexType};
-use filter::{Filter, Cond, Comp};
+use index::{IndexDef, Index, IndexKind};
+use filter::{Filter, Cond, Comp, KeyType};
 use storage::{DatabaseDef};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -169,7 +169,7 @@ impl Collection {
         Ok(indexes.iter().map(|index| (index.path.clone(), index.kind)).collect())
     }
     
-    pub fn create_index<P: AsRef<str>>(&self, path: P, kind: IndexKind, key: IndexType) -> Result<bool, String> {
+    pub fn create_index<P: AsRef<str>>(&self, path: P, kind: IndexKind, key: KeyType) -> Result<bool, String> {
         let path = path.as_ref();
         
         {

@@ -18,14 +18,14 @@ pub use types::{ResultWrap, NOT_FOUND};
 pub use document::{Primary, Document, Value};
 pub use storage::{Storage};
 pub use collection::{Collection};
-pub use index::{Index, IndexKind, IndexType, IndexData};
-pub use filter::{Filter, Comp, Cond};
+pub use index::{Index, IndexKind};
+pub use filter::{Filter, Comp, Cond, KeyType, KeyData};
 
 #[cfg(test)]
 mod test {
     use std::fs::remove_dir_all;
     use std::collections::HashSet;
-    use super::{Storage, IndexKind, IndexType, Document, Filter, Comp, IndexData};
+    use super::{Storage, IndexKind, KeyType, Document, Filter, Comp, KeyData};
 
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     pub struct UserData {
@@ -60,8 +60,8 @@ mod test {
         let s = Storage::open(DB_DIR).unwrap();
 
         let coll = s.collection("user").unwrap();
-        coll.create_index("name", IndexKind::Unique, IndexType::String).unwrap();
-        coll.create_index("view", IndexKind::Duplicate, IndexType::UInt).unwrap();
+        coll.create_index("name", IndexKind::Unique, KeyType::String).unwrap();
+        coll.create_index("view", IndexKind::Duplicate, KeyType::Int).unwrap();
 
         let mut u1 = UserData::default();
         u1.name = "kayo".into();
@@ -72,7 +72,7 @@ mod test {
         
         assert_eq!(coll.get(i1).unwrap(), Some(Document::new_with_id(i1, u1)));
 
-        assert_eq!(coll.find(Filter::Comp("name".into(), Comp::Eq(IndexData::String("kayo".into())))).unwrap(),
+        assert_eq!(coll.find(Filter::Comp("name".into(), Comp::Eq(KeyData::String("kayo".into())))).unwrap(),
                    HashSet::new());
 
         //assert!(false);

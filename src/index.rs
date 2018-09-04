@@ -1,15 +1,13 @@
 use std::sync::{Arc};
 //use std::iter::once;
 use std::collections::HashSet;
-use std::str::from_utf8;
-use std::mem::transmute;
-use byteorder::{ByteOrder, NativeEndian};
 use ron::ser::to_string as to_db_name;
 use lmdb::{Environment, put::Flags as PutFlags, Database, DatabaseOptions, ReadTransaction, ConstAccessor, WriteAccessor, Unaligned, MaybeOwned, Cursor, CursorIter, LmdbResultExt};
 
-use types::{document_field, ResultWrap, NOT_FOUND};
+use types::{document_field, ResultWrap};
 use document::{Primary, Document, Value};
 use storage::{DatabaseDef};
+use filter::{KeyType, KeyData};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum IndexKind {
@@ -23,66 +21,6 @@ impl Default for IndexKind {
     fn default() -> Self { IndexKind::Duplicate }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum IndexType {
-    #[serde(rename="uint")]
-    UInt,
-    #[serde(rename="sint")]
-    Int,
-    #[serde(rename="str")]
-    String,
-    #[serde(rename="raw")]
-    Binary,
-    #[serde(rename="bool")]
-    Bool,
-}
-
-impl Default for IndexType {
-    fn default() -> Self { IndexType::Binary }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(untagged)]
-pub enum IndexData {
-    UInt(u64),
-    Int(i64),
-    String(String),
-    Binary(Vec<u8>),
-    Bool(bool),
-}
-
-impl IndexData {
-    pub fn from_raw(typ: &IndexType, raw: &[u8]) -> Result<Self, String> {
-        use self::IndexData::*;
-        Ok(match typ {
-            IndexType::UInt => {
-                if raw.len() != 8 { return Err("UInt index must be 8 bytes length".into()) }
-                UInt(NativeEndian::read_u64(raw))
-            },
-            IndexType::Int => {
-                if raw.len() != 8 { return Err("Int index must be 8 bytes length".into()) }
-                Int(NativeEndian::read_i64(raw))
-            },
-            IndexType::String => String(from_utf8(raw).wrap_err()?.into()),
-            IndexType::Binary => Binary(Vec::from(raw)),
-            IndexType::Bool => {
-                if raw.len() != 1 { return Err("Bool index must be 1 byte length".into()) }
-                Bool(if raw[0] == 0 { false } else { true })
-            },
-        })
-    }
-    
-    pub fn into_raw(&self) -> &[u8] {
-        use self::IndexData::*;
-        match self {
-            UInt(val) => unsafe { transmute::<&u64, &[u8;8]>(val) },
-            Int(val) => unsafe { transmute::<&i64, &[u8;8]>(val) },
-            String(val) => val.as_bytes(),
-            Binary(val) => val.as_slice(),
-            Bool(val) => unsafe { transmute::<&bool, &[u8;1]>(val) },
-        }
-    }
-}
 
 /*
 #[derive(Debug, Clone)]
@@ -99,13 +37,13 @@ pub struct IndexDef (
     /// Field path
     pub String,
     pub IndexKind,
-    pub IndexType,
+    pub KeyType,
 );
 
 pub struct Index {
     pub(crate) path: String,
     pub(crate) kind: IndexKind,
-    pub(crate) key: IndexType,
+    pub(crate) key: KeyType,
     pub(crate) db: Arc<Database<'static>>,
 }
 
@@ -116,16 +54,17 @@ impl Index {
         let IndexDef(_coll, path, kind, key) = def;
 
         let db_opts = match (kind, key) {
-            (IndexKind::Unique, IndexType::UInt) => DatabaseOptions::create_map::<Unaligned<u64>>(),
-            (IndexKind::Unique, IndexType::Int) => DatabaseOptions::create_map::<Unaligned<i64>>(),
-            (IndexKind::Unique, IndexType::String) => DatabaseOptions::create_map::<str>(),
-            (IndexKind::Unique, IndexType::Binary) => DatabaseOptions::create_map::<[u8]>(),
-            (IndexKind::Unique, IndexType::Bool) => DatabaseOptions::create_map::<u8>(),
-            (IndexKind::Duplicate, IndexType::UInt) => DatabaseOptions::create_multimap::<Unaligned<u64>, Unaligned<Primary>>(),
-            (IndexKind::Duplicate, IndexType::Int) => DatabaseOptions::create_multimap::<Unaligned<i64>, Unaligned<Primary>>(),
-            (IndexKind::Duplicate, IndexType::String) => DatabaseOptions::create_multimap::<str, Unaligned<Primary>>(),
-            (IndexKind::Duplicate, IndexType::Binary) => DatabaseOptions::create_multimap::<[u8], Unaligned<Primary>>(),
-            (IndexKind::Duplicate, IndexType::Bool) => DatabaseOptions::create_multimap::<u8, Unaligned<Primary>>(),
+            (IndexKind::Unique, KeyType::Int) => DatabaseOptions::create_map::<Unaligned<i64>>(),
+            //(IndexKind::Unique, KeyType::Float) => DatabaseOptions::create_map::<Unaligned<f64>>(),
+            (IndexKind::Unique, KeyType::String) => DatabaseOptions::create_map::<str>(),
+            (IndexKind::Unique, KeyType::Binary) => DatabaseOptions::create_map::<[u8]>(),
+            (IndexKind::Unique, KeyType::Bool) => DatabaseOptions::create_map::<u8>(),
+            (IndexKind::Duplicate, KeyType::Int) => DatabaseOptions::create_multimap::<Unaligned<i64>, Unaligned<Primary>>(),
+            //(IndexKind::Duplicate, KeyType::Float) => DatabaseOptions::create_multimap::<Unaligned<f64>, Unaligned<Primary>>(),
+            (IndexKind::Duplicate, KeyType::String) => DatabaseOptions::create_multimap::<str, Unaligned<Primary>>(),
+            (IndexKind::Duplicate, KeyType::Binary) => DatabaseOptions::create_multimap::<[u8], Unaligned<Primary>>(),
+            (IndexKind::Duplicate, KeyType::Bool) => DatabaseOptions::create_multimap::<u8, Unaligned<Primary>>(),
+            _ => unimplemented!(),
         };
         
         let db = Arc::new(Database::open(
@@ -158,18 +97,18 @@ impl Index {
         Ok(())
     }
 
-    fn extract(&self, doc: &Document) -> Vec<IndexData> {
+    fn extract(&self, doc: &Document) -> Vec<KeyData> {
         let mut keys = Vec::new();
         let path = self.path.split('.');
         extract_field_values(doc.get_data(), &self.key, &path, &mut keys);
         keys
     }
 
-    pub fn query_set<'a, I: Iterator<Item = &'a IndexData>>(&self, txn: &ReadTransaction, access: &ConstAccessor, keys: I) -> Result<HashSet<Primary>, String> {
+    pub fn query_set<'a, I: Iterator<Item = &'a KeyData>>(&self, txn: &ReadTransaction, access: &ConstAccessor, keys: I) -> Result<HashSet<Primary>, String> {
         let mut out = HashSet::new();
         
         for key in keys {
-            if let Some(key) = get_index_data(&self.key, key) {
+            if let Some(key) = key.cast_type(&self.key) {
                 let mut cursor = txn.cursor(self.db.clone()).wrap_err()?;
 
                 match self.kind {
@@ -207,7 +146,7 @@ impl Index {
     }
 }
 
-fn extract_field_values<'a, 'i: 'a, I: Iterator<Item = &'i str> + Clone>(doc: &'a Value, typ: &IndexType, path: &'a I, keys: &mut Vec<IndexData>) {
+fn extract_field_values<'a, 'i: 'a, I: Iterator<Item = &'i str> + Clone>(doc: &'a Value, typ: &KeyType, path: &'a I, keys: &mut Vec<KeyData>) {
     let mut sub_path = path.clone();
     if let Some(ref name) = sub_path.next() {
         use serde_cbor::Value::*;
@@ -223,27 +162,16 @@ fn extract_field_values<'a, 'i: 'a, I: Iterator<Item = &'i str> + Clone>(doc: &'
     }
 }
 
-fn extract_field_primitives(doc: &Value, typ: &IndexType, keys: &mut Vec<IndexData>) {
+fn extract_field_primitives(doc: &Value, typ: &KeyType, keys: &mut Vec<KeyData>) {
     use serde_cbor::Value::*;
     match (typ, doc) {
-        (IndexType::UInt, U64(val)) => keys.push(IndexData::UInt(*val)),
-        (IndexType::Int, I64(val)) => keys.push(IndexData::Int(*val)),
-        (IndexType::Binary, Bytes(val)) => keys.push(IndexData::Binary(val.clone())),
-        (IndexType::String, String(val)) => keys.push(IndexData::String(val.clone())),
-        (IndexType::Bool, Bool(val)) => keys.push(IndexData::Bool(*val)),
         (_, Array(val)) => val.iter().for_each(|doc| extract_field_primitives(doc, typ, keys)),
-        _ => (),
-    }
-}
-
-fn get_index_data<'a>(typ: &IndexType, val: &'a IndexData) -> Option<&'a IndexData> {
-    use self::IndexData::*;
-    match (typ, val) {
-        (IndexType::UInt, UInt(..)) => Some(val),
-        (IndexType::Int, Int(..)) => Some(val),
-        (IndexType::Binary, Binary(..)) => Some(val),
-        (IndexType::String, String(..)) => Some(val),
-        (IndexType::Bool, Bool(..)) => Some(val),
-        _ => None,
+        (typ, val) => {
+            if let Some(val) = KeyData::from_val(&val) {
+                if let Some(val) = val.cast_type(typ) {
+                    keys.push(val.clone());
+                }
+            }
+        },
     }
 }
