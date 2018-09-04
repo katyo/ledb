@@ -1,27 +1,28 @@
-extern crate bytes;
+extern crate byteorder;
 extern crate serde;
 #[macro_use] extern crate serde_derive;
 extern crate serde_cbor;
 extern crate serde_json;
+extern crate ron;
 extern crate lmdb_zero as lmdb;
 extern crate liblmdb_sys as lmdbffi;
 
-mod key;
 mod types;
 mod storage;
 mod collection;
 mod index;
+mod filter;
 
 pub use types::{Id, Document, Binary, ResultWrap, NOT_FOUND};
-pub use key::{IntoKey, FromKey};
 pub use storage::{Storage};
 pub use collection::{Collection};
-pub use index::{Index, IndexKind};
+pub use index::{Index, IndexKind, IndexType};
+pub use filter::{Filter, Atom, Comp, Cond};
 
 #[cfg(test)]
 mod test {
     use std::fs::remove_dir_all;
-    use super::{Id, Storage};
+    use super::{Id, Storage, IndexKind, IndexType};
 
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     pub struct UserData {
@@ -57,8 +58,8 @@ mod test {
         let s = Storage::open(DB_DIR).unwrap();
 
         let coll = s.collection("user").unwrap();
-        //coll.create_index("name", IndexKind::Unique).unwrap();
-        //coll.create_index("view", IndexKind::Duplicate).unwrap();
+        coll.create_index("name", IndexKind::Unique, IndexType::String).unwrap();
+        coll.create_index("view", IndexKind::Duplicate, IndexType::UInt).unwrap();
 
         let mut u1 = UserData::default();
         u1.name = "kayo".into();
@@ -72,7 +73,7 @@ mod test {
         
         assert_eq!(coll.get(i1).unwrap(), Some(u1_));
 
-        //assert!(false);
+        assert!(false);
 
         remove_dir_all(DB_DIR).unwrap();
     }

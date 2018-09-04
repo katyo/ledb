@@ -2,12 +2,25 @@ use std::iter::once;
 use std::sync::{Arc, RwLock};
 use std::collections::HashSet;
 use serde::{Serialize, de::DeserializeOwned};
+use ron::ser::to_string as to_db_name;
 use serde_cbor::{self, Value, ObjectKey};
-use lmdb::{Environment, put::Flags as PutFlags, Database, DatabaseOptions, ReadTransaction, WriteTransaction, Cursor, CursorIter, MaybeOwned};
+use lmdb::{Environment, put::Flags as PutFlags, Database, DatabaseOptions, ReadTransaction, WriteTransaction, Cursor, CursorIter, MaybeOwned, Unaligned};
 
-pub use types::{Id, Document, Binary, ResultWrap, NOT_FOUND};
-pub use key::{IntoKey, FromKey};
-pub use index::{Index, IndexKind};
+use types::{Id, Document, ResultWrap, NOT_FOUND};
+use index::{IndexDef, Index, IndexKind, IndexType};
+use storage::{DatabaseDef};
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CollectionDef (
+    /// Collection name
+    pub String,
+);
+
+impl CollectionDef {
+    pub fn new<S: AsRef<str>>(name: S) -> Self {
+        CollectionDef(name.as_ref().into())
+    }
+}
 
 pub struct Collection {
     pub(crate) name: String,
@@ -17,30 +30,26 @@ pub struct Collection {
 }
 
 impl Collection {
-    pub fn bootstrap(env: Arc<Environment>, db: Arc<Database<'static>>) -> Result<Vec<Arc<Collection>>, String> {
-        {
-            let txn = ReadTransaction::new(env.clone()).wrap_err()?;
-            let lst = {
-                let cursor = txn.cursor(db.clone()).wrap_err()?;
-                let access = txn.access();
-                
-                CursorIter::new(MaybeOwned::Owned(cursor), &access,
-                                |c, a| c.first(a), Cursor::next::<str,[u8]>)
-                    .wrap_err()?
-                    .map(|res| res.map(|(key, _val)| key.split('.').next().unwrap()))
-                    .collect::<Result<HashSet<_>, _>>()
-                    .wrap_err()?
-                    .iter().map(|s| (*s).into())
-                           .collect::<Vec<String>>()
-            };
-            lst
-        }.iter().cloned().map(move |name| {
-            let indexes = RwLock::new(Index::bootstrap(env.clone(), db.clone(), &name)?);
-            let collection_db = Database::open(
-                env.clone(), Some(&name), &DatabaseOptions::create_map::<[u8;8]>())
-                .wrap_err()?;
-            Ok(Arc::new(Collection { name, indexes, env: env.clone(), db: Arc::new(collection_db) }))
-        }).collect::<Result<Vec<_>, _>>()
+    pub fn new(env: Arc<Environment>, def: CollectionDef, index_defs: Vec<IndexDef>) -> Result<Self, String> {        
+        let db_name = to_db_name(&DatabaseDef::Collection(def.clone())).wrap_err()?;
+        
+        let CollectionDef(name) = def;
+
+        let db_opts = DatabaseOptions::create_map::<Unaligned<Id>>();
+        
+        let db = Arc::new(Database::open(
+            env.clone(), Some(&db_name), &db_opts)
+                          .wrap_err()?);
+        
+        let indexes = RwLock::new(
+            index_defs
+                .into_iter()
+                .map(|def| Index::new(env.clone(), def).map(Arc::new))
+                .collect::<Result<Vec<_>, _>>()
+                .wrap_err()?
+        );
+        
+        Ok(Self { name, indexes, env, db })
     }
     
     pub fn insert<D: Serialize>(&self, doc: &D) -> Result<Id, String> {
@@ -60,7 +69,7 @@ impl Collection {
             let mut access = txn.access();
             let val = serde_cbor::to_vec(&doc).wrap_err()?;
             
-            access.put(&self.db, &id.into_key(), &val, PutFlags::empty())
+            access.put(&self.db, &Unaligned::new(id), &val, PutFlags::empty())
                   .wrap_err()?;
         }
 
@@ -68,7 +77,7 @@ impl Collection {
 
         for index in indexes.iter() {
             let vals = index.extract(&doc);
-            index.add(&mut txn, &vec![(id.into_key(), vals)])?;
+            index.add(&mut txn, &vec![(id, vals)])?;
         }
 
         txn.commit().wrap_err()?;
@@ -80,7 +89,7 @@ impl Collection {
         let txn = self.read_txn()?;
         let access = txn.access();
 
-        match access.get::<[u8], [u8]>(&self.db, &id.into_key()) {
+        match access.get::<Unaligned<Id>, [u8]>(&self.db, &Unaligned::new(id)) {
             Ok(val) => match serde_cbor::from_slice(val).wrap_err()? {
                 Value::Object(mut val) => {
                     val.insert(ObjectKey::String("_id".into()), Value::I64(id));
@@ -99,8 +108,8 @@ impl Collection {
         let mut cursor = txn.cursor(self.db.clone()).wrap_err()?;
         let access = txn.access();
         
-        Ok(match cursor.last::<[u8], [u8]>(&access) {
-            Ok((key, _val)) => Id::from_key(key),
+        Ok(match cursor.last::<Unaligned<Id>, [u8]>(&access) {
+            Ok((key, _val)) => key.get(),
             Err(NOT_FOUND) => 0,
             Err(e) => return Err(e).wrap_err(),
         })
@@ -111,7 +120,7 @@ impl Collection {
         Ok(indexes.iter().map(|index| (index.path.clone(), index.kind)).collect())
     }
     
-    pub fn create_index<P: AsRef<str>>(&self, path: P, kind: IndexKind) -> Result<bool, String> {
+    pub fn create_index<P: AsRef<str>>(&self, path: P, kind: IndexKind, key: IndexType) -> Result<bool, String> {
         let path = path.as_ref();
         
         {
@@ -121,23 +130,8 @@ impl Collection {
             }
         }
         
-        let db_name: String = once(self.name.as_str())
-            .chain(once("."))
-            .chain(once(path))
-            .chain(once(match kind {
-                IndexKind::Unique => ".u",
-                IndexKind::Duplicate => ".d",
-            })).collect();
-
-        let index_db = Database::open(
-            self.env.clone(), Some(&db_name), &match kind {
-                IndexKind::Unique => DatabaseOptions::create_map::<str>(),
-                IndexKind::Duplicate => DatabaseOptions::create_multimap::<str, [u8;8]>(),
-            })
-            .wrap_err()?;
-
-        let path = path.into();
-        let index = Arc::new(Index { path, kind, db: Arc::new(index_db) });
+        let index = Index::new(self.env.clone(), IndexDef(self.name.clone(), path.into(), kind, key))
+            .map(Arc::new)?;
 
         {
             let mut indexes = self.indexes.write().wrap_err()?;
@@ -150,11 +144,11 @@ impl Collection {
             let access = txn.access();
             
             let data = CursorIter::new(MaybeOwned::Owned(cursor), &access,
-                                       |c, a| c.first(a), Cursor::next::<[u8], [u8]>)
+                                       |c, a| c.first(a), Cursor::next::<Unaligned<Id>, [u8]>)
                 .wrap_err()?
                 .map(|res| res.wrap_err().and_then(|(key, val)| {
                     let doc = serde_cbor::from_slice(val).wrap_err()?;
-                    Ok((Binary::from_key(key), index.extract(&doc)))
+                    Ok((key.get(), index.extract(&doc)))
                 }))
                 .collect::<Result<Vec<_>, _>>()
                 .wrap_err()?;

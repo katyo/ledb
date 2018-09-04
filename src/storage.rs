@@ -1,11 +1,20 @@
 use std::fs::create_dir_all;
+use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
-use lmdb::{EnvBuilder, Environment, open::Flags as OpenFlags, Database, DatabaseOptions};
+use ron::de::from_str as from_db_name;
+use lmdb::{EnvBuilder, Environment, open::Flags as OpenFlags, Database, DatabaseOptions, ReadTransaction, Cursor, CursorIter, MaybeOwned};
 
 pub use types::{Id, Document, Binary, ResultWrap, NOT_FOUND};
-pub use key::{IntoKey, FromKey};
-pub use collection::{Collection};
-pub use index::{Index, IndexKind};
+pub use collection::{CollectionDef, Collection};
+pub use index::{IndexDef, Index, IndexKind};
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DatabaseDef {
+    #[serde(rename="c")]
+    Collection(CollectionDef),
+    #[serde(rename="i")]
+    Index(IndexDef),
+}
 
 pub struct Storage {
     env: Arc<Environment>,
@@ -24,9 +33,18 @@ impl Storage {
 
         let db = Arc::new(Database::open(
             env.clone(), None, &DatabaseOptions::defaults())
-            .wrap_err()?);
+                          .wrap_err()?);
 
-        let collections = RwLock::new(Collection::bootstrap(env.clone(), db.clone())?);
+        let collections = RwLock::new(
+            load_databases(&env, &db)
+                .wrap_err()?
+                .into_iter()
+                .map(|(def, index_defs)|
+                     Collection::new(env.clone(), def, index_defs)
+                     .map(Arc::new))
+                .collect::<Result<Vec<_>, _>>()
+                .wrap_err()?
+        );
         
         Ok(Self { env: env.clone(), collections })
     }
@@ -40,13 +58,11 @@ impl Storage {
                 return Ok(collection.clone());
             }
         }
-        
-        let indexes = RwLock::new(Vec::new());
-        let collection_db = Database::open(
-            self.env.clone(), Some(&name), &DatabaseOptions::create_map::<[u8;8]>())
-            .wrap_err()?;
-        let env = self.env.clone();
-        let collection = Arc::new(Collection { name: name.into(), indexes, env, db: Arc::new(collection_db) });
+
+        let collection = Collection::new(self.env.clone(),
+                                         CollectionDef::new(name),
+                                         Vec::new())
+            .map(Arc::new)?;
 
         {
             let mut collections = self.collections.write().wrap_err()?;
@@ -55,4 +71,31 @@ impl Storage {
         
         Ok(collection)
     }
+}
+
+fn load_databases(env: &Environment, db: &Database) -> Result<Vec<(CollectionDef, Vec<IndexDef>)>, String> {
+    let txn = ReadTransaction::new(env).wrap_err()?;
+    let cursor = txn.cursor(db.clone()).wrap_err()?;
+    let access = txn.access();
+    let mut defs: HashMap<String, (CollectionDef, Vec<IndexDef>)> = HashMap::new();
+    
+    for res in CursorIter::new(MaybeOwned::Owned(cursor), &access,
+                    |c, a| c.first(a), Cursor::next::<str,[u8]>)
+        .wrap_err()?
+        .map(|res| res.wrap_err().and_then(|(key, _val)| from_db_name(key).wrap_err())) {
+            match res {
+                Ok(DatabaseDef::Collection(def)) => {
+                    defs.entry(def.0.clone())
+                        .or_insert_with(|| (def, Vec::new()));
+                },
+                Ok(DatabaseDef::Index(def)) => {
+                    defs.entry(def.0.clone())
+                        .or_insert_with(|| (CollectionDef::new(&def.0), Vec::new()))
+                        .1.push(def)
+                },
+                Err(e) => return Err(e).wrap_err(),
+            }
+        }
+    
+    Ok(defs.into_iter().map(|(_key, val)| val).collect())
 }

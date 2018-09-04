@@ -4,10 +4,11 @@ version = "0.1.0"
 authors = ["Kayo Phoenix <kayo@illumium.org>"]
 
 [dependencies]
-bytes = "0.4"
+byteorder = "1"
 serde = "1"
 serde_derive = "1"
 serde_json = "1"
 serde_cbor = "0.9"
+ron = "0.4"
 lmdb-zero = "0.4"
 liblmdb-sys = "0.2"
