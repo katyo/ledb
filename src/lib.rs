@@ -7,14 +7,14 @@ extern crate ron;
 extern crate lmdb_zero as lmdb;
 extern crate liblmdb_sys as lmdbffi;
 
-mod types;
+mod error;
 mod storage;
 mod collection;
 mod index;
 mod filter;
 mod document;
 
-pub use types::{ResultWrap, NOT_FOUND};
+pub use error::{ResultWrap};
 pub use document::{Primary, Document, Value};
 pub use storage::{Storage};
 pub use collection::{Collection};

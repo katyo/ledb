@@ -1,9 +1,15 @@
 use serde::{Serialize, de::DeserializeOwned};
 use serde_cbor;
 
-use types::{ResultWrap};
+use error::{Result, ResultWrap};
 
-pub use serde_cbor::{Value};
+pub use serde_cbor::{Value, ObjectKey};
+
+pub type Field = ObjectKey;
+
+pub fn document_field<S: AsRef<str>>(s: S) -> Field {
+    ObjectKey::String(s.as_ref().into())
+}
 
 pub type Primary = u32;
 
@@ -74,31 +80,31 @@ impl<T> Document<T> {
         self
     }
 
-    pub fn into_raw(&self) -> Result<Vec<u8>, String> where T: Serialize {
+    pub fn into_raw(&self) -> Result<Vec<u8>> where T: Serialize {
         serde_cbor::to_vec(&self).wrap_err()
     }
 
-    pub fn from_raw(raw: &[u8]) -> Result<Self, String> where T: DeserializeOwned {
+    pub fn from_raw(raw: &[u8]) -> Result<Self> where T: DeserializeOwned {
         serde_cbor::from_slice(raw).wrap_err()
     }
     
-    pub fn into_gen(&self) -> Result<Document<Value>, String> where T: Serialize {
+    pub fn into_gen(&self) -> Result<Document<Value>> where T: Serialize {
         Ok(Document { id: self.id, data: serde_cbor::to_value(&self.data).wrap_err()? })
     }
 
-    pub fn from_gen(gen: Document<Value>) -> Result<Document<T>, String> where T: DeserializeOwned {
+    pub fn from_gen(gen: Document<Value>) -> Result<Document<T>> where T: DeserializeOwned {
         Ok(Document { id: gen.id, data: serde_cbor::from_value(gen.data).wrap_err()? })
     }
 }
 
 impl Document<Value> {
     #[inline]
-    pub fn from_doc<T>(doc: &Document<T>) -> Result<Self, String> where T: Serialize {
+    pub fn from_doc<T>(doc: &Document<T>) -> Result<Self> where T: Serialize {
         doc.into_gen()
     }
 
     #[inline]
-    pub fn into_doc<T>(self) -> Result<Document<T>, String> where T: DeserializeOwned {
+    pub fn into_doc<T>(self) -> Result<Document<T>> where T: DeserializeOwned {
         Document::from_gen(self)
     }
 }
@@ -142,7 +148,7 @@ mod test {
         
         assert_eq!(res, gen);
         assert_eq!(doc, src);
-        assert_eq!(res.into_raw(), gen.into_raw());
+        assert_eq!(res.into_raw().unwrap(), gen.into_raw().unwrap());
     }
 
     #[test]

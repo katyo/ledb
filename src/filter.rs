@@ -2,7 +2,7 @@ use std::str::from_utf8;
 use std::mem::transmute;
 use byteorder::{ByteOrder, NativeEndian};
 
-use types::{ResultWrap};
+use error::{Result, ResultWrap};
 use document::{Value};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -34,7 +34,7 @@ pub enum KeyData {
 }
 
 impl KeyData {
-    pub fn from_raw(typ: &KeyType, raw: &[u8]) -> Result<Self, String> {
+    pub fn from_raw(typ: &KeyType, raw: &[u8]) -> Result<Self> {
         use self::KeyData::*;
         Ok(match typ {
             KeyType::Int => {

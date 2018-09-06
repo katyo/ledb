@@ -4,8 +4,8 @@ use std::collections::HashSet;
 use ron::ser::to_string as to_db_name;
 use lmdb::{Environment, put::Flags as PutFlags, Database, DatabaseOptions, ReadTransaction, ConstAccessor, WriteAccessor, Unaligned, MaybeOwned, Cursor, CursorIter, LmdbResultExt};
 
-use types::{document_field, ResultWrap};
-use document::{Primary, Document, Value};
+use error::{Result, ResultWrap};
+use document::{Primary, Document, Value, document_field};
 use storage::{DatabaseDef};
 use filter::{KeyType, KeyData};
 
@@ -20,7 +20,6 @@ pub enum IndexKind {
 impl Default for IndexKind {
     fn default() -> Self { IndexKind::Duplicate }
 }
-
 
 /*
 #[derive(Debug, Clone)]
@@ -48,7 +47,7 @@ pub struct Index {
 }
 
 impl Index {
-    pub fn new(env: Arc<Environment>, def: IndexDef) -> Result<Self, String> {
+    pub fn new(env: Arc<Environment>, def: IndexDef) -> Result<Self> {
         let db_name = to_db_name(&DatabaseDef::Index(def.clone())).wrap_err()?;
         
         let IndexDef(_coll, path, kind, key) = def;
@@ -74,7 +73,7 @@ impl Index {
         Ok(Self { path, kind, key, db })
     }
 
-    pub fn add_to_index(&self, access: &mut WriteAccessor, doc: &Document) -> Result<(), String> {
+    pub fn add_to_index(&self, access: &mut WriteAccessor, doc: &Document) -> Result<()> {
         let id = doc.get_id().ok_or_else(|| "Missing document id".to_string())?;
         let f = PutFlags::empty();
         
@@ -86,7 +85,7 @@ impl Index {
         Ok(())
     }
 
-    pub fn remove_from_index(&self, access: &mut WriteAccessor, doc: &Document) -> Result<(), String> {
+    pub fn remove_from_index(&self, access: &mut WriteAccessor, doc: &Document) -> Result<()> {
         let id = doc.get_id().ok_or_else(|| "Missing document id".to_string())?;
         
         for key in self.extract(doc) {
@@ -104,7 +103,7 @@ impl Index {
         keys
     }
 
-    pub fn query_set<'a, I: Iterator<Item = &'a KeyData>>(&self, txn: &ReadTransaction, access: &ConstAccessor, keys: I) -> Result<HashSet<Primary>, String> {
+    pub fn query_set<'a, I: Iterator<Item = &'a KeyData>>(&self, txn: &ReadTransaction, access: &ConstAccessor, keys: I) -> Result<HashSet<Primary>> {
         let mut out = HashSet::new();
         
         for key in keys {

@@ -4,7 +4,7 @@ use std::sync::{Arc, RwLock};
 use ron::de::from_str as from_db_name;
 use lmdb::{EnvBuilder, Environment, open::Flags as OpenFlags, Database, DatabaseOptions, ReadTransaction, Cursor, CursorIter, MaybeOwned};
 
-pub use types::{ResultWrap, NOT_FOUND};
+pub use error::{Result, ResultWrap};
 pub use collection::{CollectionDef, Collection};
 pub use index::{IndexDef, Index, IndexKind};
 
@@ -22,7 +22,7 @@ pub struct Storage {
 }
 
 impl Storage {
-    pub fn open<P: AsRef<str>>(path: P) -> Result<Self, String> {
+    pub fn open<P: AsRef<str>>(path: P) -> Result<Self> {
         let path = path.as_ref();
         let mut bld = EnvBuilder::new().wrap_err()?;
         bld.set_maxdbs(1023).wrap_err()?;
@@ -36,20 +36,18 @@ impl Storage {
                           .wrap_err()?);
 
         let collections = RwLock::new(
-            load_databases(&env, &db)
-                .wrap_err()?
+            load_databases(&env, &db)?
                 .into_iter()
                 .map(|(def, index_defs)|
                      Collection::new(env.clone(), def, index_defs)
                      .map(Arc::new))
-                .collect::<Result<Vec<_>, _>>()
-                .wrap_err()?
+                .collect::<Result<Vec<_>>>()?
         );
         
         Ok(Self { env: env.clone(), collections })
     }
     
-    pub fn collection<N: AsRef<str>>(&self, name: N) -> Result<Arc<Collection>, String> {
+    pub fn collection<N: AsRef<str>>(&self, name: N) -> Result<Arc<Collection>> {
         let name = name.as_ref();
 
         {
@@ -73,7 +71,7 @@ impl Storage {
     }
 }
 
-fn load_databases(env: &Environment, db: &Database) -> Result<Vec<(CollectionDef, Vec<IndexDef>)>, String> {
+fn load_databases(env: &Environment, db: &Database) -> Result<Vec<(CollectionDef, Vec<IndexDef>)>> {
     let txn = ReadTransaction::new(env).wrap_err()?;
     let cursor = txn.cursor(db.clone()).wrap_err()?;
     let access = txn.access();
@@ -93,7 +91,7 @@ fn load_databases(env: &Environment, db: &Database) -> Result<Vec<(CollectionDef
                         .or_insert_with(|| (CollectionDef::new(&def.0), Vec::new()))
                         .1.push(def)
                 },
-                Err(e) => return Err(e).wrap_err(),
+                Err(e) => return Err(e),
             }
         }
     
