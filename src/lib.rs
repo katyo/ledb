@@ -1,32 +1,44 @@
 extern crate byteorder;
 extern crate serde;
-#[macro_use] extern crate serde_derive;
+#[macro_use]
+extern crate serde_derive;
 extern crate serde_cbor;
-extern crate serde_json;
 extern crate ron;
 extern crate lmdb_zero as lmdb;
 extern crate liblmdb_sys as lmdbffi;
+
+#[cfg(test)]
+#[macro_use]
+extern crate serde_json;
+
+#[cfg(test)]
+#[macro_use]
+mod test;
 
 mod error;
 mod storage;
 mod collection;
 mod index;
+mod selection;
 mod filter;
 mod document;
+mod extra;
 
 pub use error::{ResultWrap};
 pub use document::{Primary, Document, Value};
 pub use storage::{Storage};
 pub use collection::{Collection};
 pub use index::{Index, IndexKind};
-pub use filter::{Filter, Comp, Cond, KeyType, KeyData};
+pub use selection::{Selection};
+pub use filter::{Filter, Comp, Cond, KeyType, KeyData, OrderKind, Order};
 
 #[cfg(test)]
-mod test {
+mod lib_test {
     use std::fs::remove_dir_all;
     use std::collections::HashSet;
-    use super::{Storage, IndexKind, KeyType, Document, Filter, Comp, KeyData};
-
+    use serde_json::from_value;
+    use super::{Storage, IndexKind, KeyType, Document, Filter, Comp, KeyData, Order, OrderKind};
+    
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     pub struct UserData {
         pub name: String,
@@ -70,10 +82,41 @@ mod test {
 
         assert_eq!(i1, 1);
         
-        assert_eq!(coll.get(i1).unwrap(), Some(Document::new_with_id(i1, u1)));
+        assert_eq!(coll.get(i1).unwrap(), Some(Document::new_with_id(i1, u1.clone())));
 
-        assert_eq!(coll.find(Filter::Comp("name".into(), Comp::Eq(KeyData::String("kayo".into())))).unwrap(),
-                   HashSet::new());
+        assert_eq!(coll.find(None, Order::Primary(OrderKind::Asc))
+                   .unwrap().collect::<Result<Vec<Document<UserData>>, _>>().unwrap(),
+                   vec![Document::new_with_id(i1, u1.clone())]);
+
+        // Some(Filter::Comp("name".into(), Comp::Eq(KeyData::String("kayo".into()))))
+        // Order::ById(OrderKind::Asc)
+        
+        assert_eq!(coll.find(json_val!({"name":{"$eq":"kayo"}}), json_val!("$asc"))
+                   .unwrap().collect::<Result<Vec<Document<UserData>>, _>>().unwrap(),
+                   vec![Document::new_with_id(i1, u1.clone())]);
+
+        let mut u2 = UserData::default();
+        u2.name = "kiri".into();
+        
+        let i2 = coll.insert(&u2).unwrap();
+
+        assert_eq!(i2, 2);
+        
+        assert_eq!(coll.get(i2).unwrap(), Some(Document::new_with_id(i2, u2.clone())));
+
+        assert_eq!(coll.find(json_val!({"name":{"$eq":"kayo"}}), json_val!("$asc"))
+                   .unwrap().collect::<Result<Vec<Document<UserData>>, _>>().unwrap(),
+                   vec![Document::new_with_id(i1, u1.clone())]);
+
+        assert_eq!(coll.find(json_val!(null), json_val!("$asc"))
+                   .unwrap().collect::<Result<Vec<Document<UserData>>, _>>().unwrap(),
+                   vec![Document::new_with_id(i1, u1.clone()),
+                        Document::new_with_id(i2, u2.clone())]);
+
+        assert_eq!(coll.find(json_val!(null), json_val!("$desc"))
+                   .unwrap().collect::<Result<Vec<Document<UserData>>, _>>().unwrap(),
+                   vec![Document::new_with_id(i2, u2.clone()),
+                        Document::new_with_id(i1, u1.clone())]);
 
         //assert!(false);
 

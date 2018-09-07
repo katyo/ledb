@@ -1,15 +1,13 @@
-use std::iter::once;
 use std::sync::{Arc, RwLock};
-use std::collections::HashSet;
+use std::marker::PhantomData;
 use serde::{Serialize, de::DeserializeOwned};
 use ron::ser::to_string as to_db_name;
-use serde_cbor::{self, Value, ObjectKey};
-use lmdb::{Environment, put::Flags as PutFlags, Database, DatabaseOptions, ReadTransaction, WriteTransaction, Cursor, CursorIter, MaybeOwned, Unaligned, LmdbResultExt};
+use lmdb::{Environment, put::Flags as PutFlags, Database, DatabaseOptions, ReadTransaction, WriteTransaction, Cursor, CursorIter, MaybeOwned, Unaligned, LmdbResultExt, traits::CreateCursor};
 
-use error::{Error, Result, ResultWrap};
+use error::{Result, ResultWrap};
 use document::{Primary, Document};
 use index::{IndexDef, Index, IndexKind};
-use filter::{Filter, Cond, Comp, KeyType};
+use filter::{Filter, KeyType, Order, OrderKind};
 use storage::{DatabaseDef};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -61,20 +59,27 @@ impl Collection {
         Ok(id)
     }
 
-    pub fn find(&self, filter: Filter) -> /*ListIterator*/ Result<HashSet<Primary>> {
-        let txn = self.read_txn()?;
-        let access = txn.access();
-        
-        match filter {
-            Filter::Comp(path, Comp::Eq(val)) => {
-                if let Some(index) = self.get_index(path)? {
-                    return Ok(index.query_set(&txn, &access, once(&val))?)
-                }
-            },
-            _ => (),
-        }
+    pub fn find<T: DeserializeOwned>(&self, filter: Option<Filter>, order: Order) -> Result<DocumentsIterator<T>> {
+        let txn = Arc::new(ReadTransaction::new(self.env.clone())?);
 
-        Ok(HashSet::new())
+        let all_ids: Box<Iterator<Item = Result<Primary>>> = match order {
+            Order::Primary(order) => Box::new(PrimaryIterator::new(txn.clone(), self.db.clone(), order)?),
+            Order::Field(path, order) => Box::new(self.req_index(path)?.query_iter(txn.clone(), order)?),
+        };
+        
+        let filtered_ids: Box<Iterator<Item = Result<Primary>>> =
+            if let Some(filter) = filter {
+                let sel = filter.apply(&txn, &self)?;
+                Box::new(all_ids.filter(move |res| if let Ok(id) = res {
+                    sel.has(&id)
+                } else {
+                    true
+                }))
+            } else {
+                Box::new(all_ids)
+            };
+        
+        Ok(DocumentsIterator::new(txn.clone(), self.db.clone(), filtered_ids)?)
     }
 
     pub fn has(&self, id: Primary) -> Result<bool> {
@@ -157,9 +162,9 @@ impl Collection {
             .to_opt().map(|res| res.map(|(key, _val)| key.get()).unwrap_or(0)).wrap_err()
     }
     
-    pub fn get_indexes(&self) -> Result<Vec<(String, IndexKind)>> {
+    pub fn get_indexes(&self) -> Result<Vec<(String, IndexKind, KeyType)>> {
         let indexes = self.indexes.read().wrap_err()?;
-        Ok(indexes.iter().map(|index| (index.path.clone(), index.kind)).collect())
+        Ok(indexes.iter().map(|index| (index.path.clone(), index.kind, index.key)).collect())
     }
     
     pub fn create_index<P: AsRef<str>>(&self, path: P, kind: IndexKind, key: KeyType) -> Result<bool> {
@@ -229,18 +234,93 @@ impl Collection {
         Ok(true)
     }
 
-    fn get_index<P: AsRef<str>>(&self, path: P) -> Result<Option<Arc<Index>>> {
+    pub(crate) fn get_index<P: AsRef<str>>(&self, path: P) -> Result<Option<Arc<Index>>> {
         let path = path.as_ref();
         let indexes = self.indexes.read().wrap_err()?;
         
         Ok(indexes.iter().find(|index| index.path == path).map(Clone::clone))
     }
 
-    fn read_txn(&self) -> Result<ReadTransaction> {
+    pub(crate) fn req_index<P: AsRef<str>>(&self, path: P) -> Result<Arc<Index>> {
+        if let Some(index) = self.get_index(&path)? {
+            Ok(index)
+        } else {
+            Err(format!("Missing index for field '{}'", path.as_ref())).wrap_err()
+        }
+    }
+
+    pub(crate) fn read_txn(&self) -> Result<ReadTransaction> {
         ReadTransaction::new(self.env.clone()).wrap_err()
     }
 
     fn write_txn(&self) -> Result<WriteTransaction> {
         WriteTransaction::new(self.env.clone()).wrap_err()
+    }
+}
+
+pub struct PrimaryIterator {
+    txn: Arc<ReadTransaction<'static>>,
+    cur: Cursor<'static, 'static>,
+    order: OrderKind,
+    init: bool,
+}
+
+impl PrimaryIterator {
+    pub fn new(txn: Arc<ReadTransaction<'static>>, db: Arc<Database<'static>>, order: OrderKind) -> Result<Self> {
+        let cur = txn.cursor(db)?;
+
+        Ok(Self { txn, cur, order, init: false })
+    }
+}
+
+impl Iterator for PrimaryIterator {
+    type Item = Result<Primary>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let access = self.txn.access();
+        match if self.init {
+            match self.order {
+                OrderKind::Asc => self.cur.next::<Unaligned<Primary>, [u8]>(&access),
+                OrderKind::Desc => self.cur.prev::<Unaligned<Primary>, [u8]>(&access),
+            }
+        } else {
+            self.init = true;
+            match self.order {
+                OrderKind::Asc => self.cur.first::<Unaligned<Primary>, [u8]>(&access),
+                OrderKind::Desc => self.cur.last::<Unaligned<Primary>, [u8]>(&access),
+            }
+        }.to_opt() {
+            Ok(Some((id, _val))) => Some(Ok(id.get())),
+            Ok(None) => None,
+            Err(e) => Some(Err(e).wrap_err()),
+        }
+    }
+}
+
+pub struct DocumentsIterator<T> {
+    db: Arc<Database<'static>>,
+    txn: Arc<ReadTransaction<'static>>,
+    ids_iter: Box<Iterator<Item = Result<Primary>>>,
+    phantom_doc: PhantomData<T>,
+}
+
+impl<T> DocumentsIterator<T> {
+    pub fn new(txn: Arc<ReadTransaction<'static>>, db: Arc<Database<'static>>, ids_iter: Box<Iterator<Item = Result<Primary>>>) -> Result<Self> {
+        Ok(Self { db, txn, ids_iter, phantom_doc: PhantomData })
+    }
+}
+
+impl<T> Iterator for DocumentsIterator<T>
+    where T: DeserializeOwned
+{
+    type Item = Result<Document<T>>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self.ids_iter.next() {
+            Some(Ok(id)) => Some(self.txn.access().get(&self.db, &Unaligned::new(id)).wrap_err()
+                                 .and_then(Document::<T>::from_raw).wrap_err()),
+            Some(Err(e)) => Some(Err(e)),
+            None => None,
+        }
     }
 }

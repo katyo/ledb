@@ -7,8 +7,11 @@ authors = ["Kayo Phoenix <kayo@illumium.org>"]
 byteorder = "1"
 serde = "1"
 serde_derive = "1"
-serde_json = "1"
 serde_cbor = "0.9"
 ron = "0.4"
 lmdb-zero = "0.4"
 liblmdb-sys = "0.2"
+
+[dev-dependencies]
+serde_json = "1"
+lipsum = "0.5"
