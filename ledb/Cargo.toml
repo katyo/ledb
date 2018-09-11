@@ -1,5 +1,5 @@
 [package]
-name = "docstor"
+name = "ledb"
 version = "0.1.0"
 authors = ["Kayo Phoenix <kayo@illumium.org>"]
 

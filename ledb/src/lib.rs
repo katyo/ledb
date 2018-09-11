@@ -16,18 +16,18 @@ extern crate serde_json;
 mod test;
 
 mod error;
+mod document;
+mod selection;
+mod filter;
+mod extra;
 mod storage;
 mod collection;
 mod index;
-mod selection;
-mod filter;
-mod document;
-mod extra;
 
-pub use error::{ResultWrap};
+pub use error::{Error, Result, ResultWrap};
 pub use document::{Primary, Document, Value};
 pub use storage::{Storage};
-pub use collection::{Collection};
+pub use collection::{Collection, DocumentsIterator};
 pub use index::{Index, IndexKind};
 pub use selection::{Selection};
 pub use filter::{Filter, Comp, Cond, KeyType, KeyData, OrderKind, Order};
