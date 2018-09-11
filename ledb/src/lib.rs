@@ -16,6 +16,7 @@ extern crate serde_json;
 mod test;
 
 mod error;
+mod float;
 mod document;
 mod selection;
 mod filter;

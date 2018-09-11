@@ -8,6 +8,7 @@ use document::{Primary, Document, Value, document_field};
 use storage::{DatabaseDef};
 use filter::{KeyType, KeyData, OrderKind};
 use extra::{CursorExtra};
+use float::F64;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum IndexKind {
@@ -46,12 +47,12 @@ impl Index {
         
         let db_opts = match (kind, key) {
             (IndexKind::Unique, KeyType::Int) => DatabaseOptions::create_map::<Unaligned<i64>>(),
-            (IndexKind::Unique, KeyType::Float) => unimplemented!(), //DatabaseOptions::create_map::<Unaligned<f64>>(),
+            (IndexKind::Unique, KeyType::Float) => DatabaseOptions::create_map::<Unaligned<F64>>(),
             (IndexKind::Unique, KeyType::String) => DatabaseOptions::create_map::<str>(),
             (IndexKind::Unique, KeyType::Binary) => DatabaseOptions::create_map::<[u8]>(),
             (IndexKind::Unique, KeyType::Bool) => DatabaseOptions::create_map::<u8>(),
             (IndexKind::Duplicate, KeyType::Int) => DatabaseOptions::create_multimap::<Unaligned<i64>, Unaligned<Primary>>(),
-            (IndexKind::Duplicate, KeyType::Float) => unimplemented!(), //DatabaseOptions::create_multimap::<Unaligned<f64>, Unaligned<Primary>>(),
+            (IndexKind::Duplicate, KeyType::Float) => DatabaseOptions::create_multimap::<Unaligned<F64>, Unaligned<Primary>>(),
             (IndexKind::Duplicate, KeyType::String) => DatabaseOptions::create_multimap::<str, Unaligned<Primary>>(),
             (IndexKind::Duplicate, KeyType::Binary) => DatabaseOptions::create_multimap::<[u8], Unaligned<Primary>>(),
             (IndexKind::Duplicate, KeyType::Bool) => DatabaseOptions::create_multimap::<u8, Unaligned<Primary>>(),
