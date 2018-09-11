@@ -38,6 +38,11 @@ impl<T> Document<T> {
     }
 
     #[inline]
+    pub fn req_id(&self) -> Result<Primary> {
+        self.get_id().ok_or_else(|| "Missing document id").wrap_err()
+    }
+
+    #[inline]
     pub fn get_data(&self) -> &T {
         &self.data
     }

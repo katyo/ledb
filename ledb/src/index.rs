@@ -63,7 +63,7 @@ impl Index {
     }
 
     pub fn add_to_index(&self, access: &mut WriteAccessor, doc: &Document) -> Result<()> {
-        let id = doc.get_id().ok_or_else(|| "Missing document id".to_string())?;
+        let id = doc.req_id()?;
         let f = PutFlags::empty();
         
         for key in self.extract(doc) {
@@ -75,7 +75,7 @@ impl Index {
     }
 
     pub fn remove_from_index(&self, access: &mut WriteAccessor, doc: &Document) -> Result<()> {
-        let id = doc.get_id().ok_or_else(|| "Missing document id").wrap_err()?;
+        let id = doc.req_id()?;
         
         for key in self.extract(doc) {
             access.del_item(&self.db, key.into_raw(), &Unaligned::new(id)).wrap_err()?;
