@@ -1,6 +1,7 @@
 use std::str::from_utf8;
 use std::mem::transmute;
 use std::iter::once;
+use std::borrow::Cow;
 use byteorder::{ByteOrder, NativeEndian};
 use lmdb::{ReadTransaction};
 
@@ -82,16 +83,35 @@ impl KeyData {
         })
     }
 
-    pub fn cast_type<'a>(&'a self, typ: &KeyType) -> Option<&'a KeyData> {
+    pub fn as_type<'a>(&'a self, typ: &KeyType) -> Option<&'a KeyData> {
         use self::KeyData::*;
-        match (typ, self) {
-            (KeyType::Int, Int(..)) => Some(self),
-            (KeyType::Float, Float(..)) => Some(self),
-            (KeyType::Binary, Binary(..)) => Some(self),
-            (KeyType::String, String(..)) => Some(self),
-            (KeyType::Bool, Bool(..)) => Some(self),
-            _ => None,
-        }
+        Some(match (typ, self) {
+            (KeyType::Int, Int(..)) |
+            (KeyType::Float, Float(..)) |
+            (KeyType::Binary, Binary(..)) |
+            (KeyType::String, String(..)) |
+            (KeyType::Bool, Bool(..)) => self,
+            _ => return None,
+        })
+    }
+
+    pub fn into_type<'a>(&'a self, typ: &KeyType) -> Option<Cow<'a, KeyData>> {
+        use self::KeyData::*;
+        Some(if let Some(v) = self.as_type(typ) {
+            Cow::Borrowed(v)
+        } else {
+            Cow::Owned(match (typ, self) {
+                (KeyType::Float, Int(v)) => Float(*v as f64),
+                (KeyType::Int, Float(v)) => Int(v.round() as i64),
+                (KeyType::String, Int(v)) => String(v.to_string()),
+                (KeyType::String, Float(v)) => String(v.to_string()),
+                (KeyType::String, Bool(v)) => String(v.to_string()),
+                (KeyType::Int, String(v)) => Int(if let Ok(v) = v.parse() { v } else { return None }),
+                (KeyType::Float, String(v)) => Float(if let Ok(v) = v.parse() { v } else { return None }),
+                (KeyType::Bool, String(v)) => Bool(if let Ok(v) = v.parse() { v } else { return None }),
+                _ => return None,
+            })
+        })
     }
 
     pub fn get_type(&self) -> KeyType {

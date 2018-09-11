@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::borrow::Cow;
 use std::collections::HashSet;
 use ron::ser::to_string as to_db_name;
 use lmdb::{Environment, put::Flags as PutFlags, Database, DatabaseOptions, ReadTransaction, ConstAccessor, WriteAccessor, Unaligned, MaybeOwned, Cursor, CursorIter, LmdbResultExt, traits::CreateCursor};
@@ -96,7 +97,7 @@ impl Index {
         let mut out = HashSet::new();
         
         for key in keys {
-            if let Some(key) = key.cast_type(&self.key) {
+            if let Some(key) = key.into_type(&self.key) {
                 let mut cursor = txn.cursor(self.db.clone()).wrap_err()?;
 
                 match self.kind {
@@ -136,8 +137,8 @@ impl Index {
     pub fn query_range(&self, txn: &ReadTransaction, access: &ConstAccessor, beg: Option<&KeyData>, end: Option<&KeyData>) -> Result<HashSet<Primary>> {
         let mut out = HashSet::new();
 
-        let beg = beg.and_then(|key| key.cast_type(&self.key));
-        let end = end.and_then(|key| key.cast_type(&self.key));
+        let beg = beg.and_then(|key| key.into_type(&self.key));
+        let end = end.and_then(|key| key.into_type(&self.key));
         let cursor = txn.cursor(self.db.clone()).wrap_err()?;
         
         match (beg, end) {
@@ -177,8 +178,8 @@ fn extract_field_primitives(doc: &Value, typ: &KeyType, keys: &mut Vec<KeyData>)
         (_, Array(val)) => val.iter().for_each(|doc| extract_field_primitives(doc, typ, keys)),
         (typ, val) => {
             if let Some(val) = KeyData::from_val(&val) {
-                if let Some(val) = val.cast_type(typ) {
-                    keys.push(val.clone());
+                if let Some(val) = val.into_type(typ) {
+                    keys.push(val.into_owned());
                 }
             }
         },
@@ -227,7 +228,7 @@ fn query_unbounded(kind: IndexKind, access: &ConstAccessor, cursor: Cursor, out:
     Ok(())
 }
 
-fn query_greaterequal(kind: IndexKind, access: &ConstAccessor, cursor: Cursor, key: &KeyData, out: &mut HashSet<Primary>) -> Result<()> {
+fn query_greaterequal(kind: IndexKind, access: &ConstAccessor, cursor: Cursor, key: Cow<'_, KeyData>, out: &mut HashSet<Primary>) -> Result<()> {
     match kind {
         IndexKind::Unique => {
             for item in CursorIter::new(
@@ -269,7 +270,7 @@ fn query_greaterequal(kind: IndexKind, access: &ConstAccessor, cursor: Cursor, k
     Ok(())
 }
 
-fn query_lessequal(kind: IndexKind, access: &ConstAccessor, cursor: Cursor, key: &KeyData, out: &mut HashSet<Primary>) -> Result<()> {
+fn query_lessequal(kind: IndexKind, access: &ConstAccessor, cursor: Cursor, key: Cow<'_, KeyData>, out: &mut HashSet<Primary>) -> Result<()> {
     match kind {
         IndexKind::Unique => {
             for item in CursorIter::new(
@@ -313,7 +314,7 @@ fn query_lessequal(kind: IndexKind, access: &ConstAccessor, cursor: Cursor, key:
     Ok(())
 }
 
-fn query_bounded(kind: IndexKind, access: &ConstAccessor, cursor: Cursor, beg: &KeyData, end: &KeyData, out: &mut HashSet<Primary>) -> Result<()> {
+fn query_bounded(kind: IndexKind, access: &ConstAccessor, cursor: Cursor, beg: Cow<'_, KeyData>, end: Cow<'_, KeyData>, out: &mut HashSet<Primary>) -> Result<()> {
     match kind {
         IndexKind::Unique => {
             for item in CursorIter::new(
@@ -323,7 +324,7 @@ fn query_bounded(kind: IndexKind, access: &ConstAccessor, cursor: Cursor, beg: &
                 .wrap_err()?
             {
                 match item {
-                    Ok((key, id)) => if &KeyData::from_raw(&end.get_type(), key)? > end {
+                    Ok((key, id)) => if &KeyData::from_raw(&end.get_type(), key)? > &end {
                         break;
                     } else {
                         out.insert(id.get());
@@ -349,7 +350,7 @@ fn query_bounded(kind: IndexKind, access: &ConstAccessor, cursor: Cursor, beg: &
                 .wrap_err()?
             {
                 match item {
-                    Ok((key, ids)) =>  if &KeyData::from_raw(&end.get_type(), key)? > end {
+                    Ok((key, ids)) =>  if &KeyData::from_raw(&end.get_type(), key)? > &end {
                         break;
                     } else {
                         for id in ids { out.insert(id.get()); }
