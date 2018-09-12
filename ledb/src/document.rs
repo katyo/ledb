@@ -1,15 +1,10 @@
+use std::ops::Deref;
+
 use serde::{Serialize, de::DeserializeOwned};
 use serde_cbor;
 
-use error::{Result, ResultWrap};
-
+use super::{Result, ResultWrap};
 pub use serde_cbor::{Value, ObjectKey};
-
-pub type Field = ObjectKey;
-
-pub fn document_field<S: AsRef<str>>(s: S) -> Field {
-    ObjectKey::String(s.as_ref().into())
-}
 
 pub type Primary = u32;
 
@@ -19,6 +14,14 @@ pub struct Document<T = Value> {
     id: Option<Primary>,
     #[serde(flatten)]
     data: T,
+}
+
+impl<T> Deref for Document<T> {
+    type Target = T;
+
+    fn deref(&self) -> &T {
+        &self.data
+    }
 }
 
 impl<T> Document<T> {

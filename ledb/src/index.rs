@@ -2,13 +2,10 @@ use std::sync::Arc;
 use std::borrow::Cow;
 use std::collections::HashSet;
 use ron::ser::to_string as to_db_name;
-use lmdb::{Environment, put::Flags as PutFlags, Database, DatabaseOptions, ReadTransaction, ConstAccessor, WriteAccessor, Unaligned, MaybeOwned, Cursor, CursorIter, LmdbResultExt, traits::CreateCursor};
+use lmdb::{Environment, put::{NOOVERWRITE, NODUPDATA}, Database, DatabaseOptions, ReadTransaction, ConstAccessor, WriteAccessor, Unaligned, MaybeOwned, Cursor, CursorIter, LmdbResultExt, traits::CreateCursor};
 
-use error::{Result, ResultWrap};
-use document::{Primary, Document, Value, document_field};
-use storage::{DatabaseDef};
-use filter::{KeyType, KeyData, OrderKind};
-use extra::{CursorExtra};
+use super::{Result, ResultWrap, Primary, Document, Value, DatabaseDef, KeyType, KeyData, OrderKind};
+use extra::CursorExtra;
 use float::F64;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -64,9 +61,14 @@ impl Index {
         Ok(Self { path, kind, key, db })
     }
 
+    // TODO: single update_index() fn
     pub fn add_to_index(&self, access: &mut WriteAccessor, doc: &Document) -> Result<()> {
         let id = doc.req_id()?;
-        let f = PutFlags::empty();
+
+        let f = match self.kind {
+            IndexKind::Unique => NOOVERWRITE,
+            IndexKind::Duplicate => NODUPDATA,
+        };
         
         for key in self.extract(doc) {
             access.put(&self.db, key.into_raw(), &Unaligned::new(id), f)
@@ -75,7 +77,8 @@ impl Index {
 
         Ok(())
     }
-
+    
+    // TODO: single update_index() fn
     pub fn remove_from_index(&self, access: &mut WriteAccessor, doc: &Document) -> Result<()> {
         let id = doc.req_id()?;
         
@@ -89,7 +92,7 @@ impl Index {
     fn extract(&self, doc: &Document) -> Vec<KeyData> {
         let mut keys = Vec::new();
         let path = self.path.split('.');
-        extract_field_values(doc.get_data(), &self.key, &path, &mut keys);
+        extract_field_values(doc.get_data(), self.key, &path, &mut keys);
         keys
     }
 
@@ -97,7 +100,7 @@ impl Index {
         let mut out = HashSet::new();
         
         for key in keys {
-            if let Some(key) = key.into_type(&self.key) {
+            if let Some(key) = key.into_type(self.key) {
                 let mut cursor = txn.cursor(self.db.clone()).wrap_err()?;
 
                 match self.kind {
@@ -137,8 +140,8 @@ impl Index {
     pub fn query_range(&self, txn: &ReadTransaction, access: &ConstAccessor, beg: Option<&KeyData>, end: Option<&KeyData>) -> Result<HashSet<Primary>> {
         let mut out = HashSet::new();
 
-        let beg = beg.and_then(|key| key.into_type(&self.key));
-        let end = end.and_then(|key| key.into_type(&self.key));
+        let beg = beg.and_then(|key| key.into_type(self.key));
+        let end = end.and_then(|key| key.into_type(self.key));
         let cursor = txn.cursor(self.db.clone()).wrap_err()?;
         
         match (beg, end) {
@@ -156,13 +159,13 @@ impl Index {
     }
 }
 
-fn extract_field_values<'a, 'i: 'a, I: Iterator<Item = &'i str> + Clone>(doc: &'a Value, typ: &KeyType, path: &'a I, keys: &mut Vec<KeyData>) {
+fn extract_field_values<'a, 'i: 'a, I: Iterator<Item = &'i str> + Clone>(doc: &'a Value, typ: KeyType, path: &'a I, keys: &mut Vec<KeyData>) {
     let mut sub_path = path.clone();
-    if let Some(ref name) = sub_path.next() {
+    if let Some(name) = sub_path.next() {
         use serde_cbor::Value::*;
         match doc {
             Array(val) => val.iter().for_each(|doc| extract_field_values(doc, typ, path, keys)),
-            Object(val) => if let Some(doc) = val.get(&document_field(*name)) {
+            Object(val) => if let Some(doc) = val.get(&name.to_owned().into()) {
                 extract_field_values(doc, typ, &sub_path, keys);
             },
             _ => (),
@@ -172,7 +175,7 @@ fn extract_field_values<'a, 'i: 'a, I: Iterator<Item = &'i str> + Clone>(doc: &'
     }
 }
 
-fn extract_field_primitives(doc: &Value, typ: &KeyType, keys: &mut Vec<KeyData>) {
+fn extract_field_primitives(doc: &Value, typ: KeyType, keys: &mut Vec<KeyData>) {
     use serde_cbor::Value::*;
     match (typ, doc) {
         (_, Array(val)) => val.iter().for_each(|doc| extract_field_primitives(doc, typ, keys)),
@@ -324,7 +327,7 @@ fn query_bounded(kind: IndexKind, access: &ConstAccessor, cursor: Cursor, beg: C
                 .wrap_err()?
             {
                 match item {
-                    Ok((key, id)) => if &KeyData::from_raw(&end.get_type(), key)? > &end {
+                    Ok((key, id)) => if &KeyData::from_raw(end.get_type(), key)? > &end {
                         break;
                     } else {
                         out.insert(id.get());
@@ -350,7 +353,7 @@ fn query_bounded(kind: IndexKind, access: &ConstAccessor, cursor: Cursor, beg: C
                 .wrap_err()?
             {
                 match item {
-                    Ok((key, ids)) =>  if &KeyData::from_raw(&end.get_type(), key)? > &end {
+                    Ok((key, ids)) =>  if &KeyData::from_raw(end.get_type(), key)? > &end {
                         break;
                     } else {
                         for id in ids { out.insert(id.get()); }

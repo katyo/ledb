@@ -1,3 +1,6 @@
+use std::fs::{create_dir_all, remove_dir_all};
+use super::{Result, Storage};
+
 macro_rules! json_str {
     ($($json:tt)+) => {
         to_string(&json!($($json)+)).unwrap()
@@ -22,4 +25,15 @@ macro_rules! test_build {
         assert_eq!(to_string(&$rust_val).unwrap(),
                    to_string(&$json_val).unwrap());
     }
+}
+
+static DB_DIR: &'static str = ".test_dbs";
+
+pub fn test_db(id: &'static str) -> Result<Storage> {
+    let path = format!("{}/{}", DB_DIR, id);
+
+    let _ = create_dir_all(DB_DIR);
+    let _ = remove_dir_all(&path);
+
+    Storage::open(&path)
 }

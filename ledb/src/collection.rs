@@ -4,11 +4,7 @@ use serde::{Serialize, de::DeserializeOwned};
 use ron::ser::to_string as to_db_name;
 use lmdb::{Environment, put::Flags as PutFlags, Database, DatabaseOptions, ReadTransaction, WriteTransaction, Cursor, CursorIter, MaybeOwned, Unaligned, LmdbResultExt, traits::CreateCursor};
 
-use error::{Result, ResultWrap};
-use document::{Primary, Document};
-use index::{IndexDef, Index, IndexKind};
-use filter::{Filter, KeyType, Order, OrderKind};
-use storage::{DatabaseDef};
+use super::{Result, ResultWrap, KeyType, Primary, Document, Value, IndexDef, Index, IndexKind, Filter, Order, OrderKind, DatabaseDef};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CollectionDef (
@@ -82,6 +78,10 @@ impl Collection {
         Ok(DocumentsIterator::new(txn.clone(), self.db.clone(), filtered_ids)?)
     }
 
+    pub fn find_all<T: DeserializeOwned>(&self, filter: Option<Filter>, order: Order) -> Result<Vec<Document<T>>> {
+        self.find(filter, order)?.collect::<Result<Vec<_>>>()
+    }
+
     pub fn has(&self, id: Primary) -> Result<bool> {
         let txn = self.read_txn()?;
         let access = txn.access();
@@ -96,7 +96,7 @@ impl Collection {
 
         Ok(match access.get::<Unaligned<Primary>, [u8]>(&self.db, &Unaligned::new(id))
             .to_opt().wrap_err()? {
-                Some(val) => Some(Document::from_raw(val)?.with_id(id)),
+                Some(val) => Some(Document::<T>::from_raw(val)?.with_id(id)),
                 None => None,
             })
     }
@@ -199,7 +199,7 @@ impl Collection {
                     .wrap_err()?
                 {
                     let (key, val) = res.wrap_err()?;
-                    let doc = Document::from_raw(val)?.with_id(key.get());
+                    let doc = Document::<Value>::from_raw(val)?.with_id(key.get());
                     index.add_to_index(&mut access, &doc)?;
                 }
             }
