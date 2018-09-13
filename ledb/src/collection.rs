@@ -48,7 +48,7 @@ impl Collection {
     }
     
     pub fn insert<T: Serialize>(&self, doc: &T) -> Result<Primary> {
-        let id = self.last_id()? + 1;
+        let id = self.new_id()?;
 
         self.put(&Document::new(doc).with_id(id))?;
 
@@ -147,6 +147,10 @@ impl Collection {
         
         cursor.last::<Unaligned<Primary>, [u8]>(&access)
             .to_opt().map(|res| res.map(|(key, _val)| key.get()).unwrap_or(0)).wrap_err()
+    }
+
+    pub fn new_id(&self) -> Result<Primary> {
+        self.last_id().map(|id| id + 1)
     }
     
     pub fn get_indexes(&self) -> Result<Vec<(String, IndexKind, KeyType)>> {
