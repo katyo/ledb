@@ -22,8 +22,8 @@ macro_rules! test_parse {
 
 macro_rules! test_build {
     ($rust_val:expr, $json_val:expr) => {
-        assert_eq!(to_string(&$rust_val).unwrap(),
-                   to_string(&$json_val).unwrap());
+        assert_eq!(from_str::<Value>(&to_string(&$rust_val).unwrap()).unwrap(),
+                   from_str::<Value>(&to_string(&$json_val).unwrap()).unwrap());
     }
 }
 

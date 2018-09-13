@@ -221,7 +221,7 @@ impl Index {
 fn extract_field_values<'a, 'i: 'a, I: Iterator<Item = &'i str> + Clone>(doc: &'a Value, typ: KeyType, path: &'a I, keys: &mut HashSet<KeyData>) {
     let mut sub_path = path.clone();
     if let Some(name) = sub_path.next() {
-        use serde_cbor::Value::*;
+        use Value::*;
         match doc {
             Array(val) => val.iter().for_each(|doc| extract_field_values(doc, typ, path, keys)),
             Object(val) => if let Some(doc) = val.get(&name.to_owned().into()) {

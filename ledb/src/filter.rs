@@ -6,7 +6,7 @@ use value::{KeyData};
 use selection::{Selection};
 use collection::{Collection};
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Comp {
     #[serde(rename = "$eq")]
     Eq(KeyData),
@@ -26,7 +26,7 @@ pub enum Comp {
     Has,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Cond {
     #[serde(rename = "$not")]
     Not(Box<Filter>),
@@ -36,7 +36,7 @@ pub enum Cond {
     Or(Vec<Filter>),
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum Filter {
     Cond(Cond),
@@ -94,12 +94,20 @@ pub enum OrderKind {
     Desc,
 }
 
+impl Default for OrderKind {
+    fn default() -> Self { OrderKind::Asc }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum Order {
     Primary(OrderKind),
     #[serde(with = "order")]
     Field(String, OrderKind),
+}
+
+impl Default for Order {
+    fn default() -> Self { Order::Primary(OrderKind::default()) }
 }
 
 mod comp {
@@ -147,7 +155,7 @@ mod order {
 #[cfg(test)]
 mod test {
     use super::{Filter, Comp, Cond, KeyData, Order, OrderKind};
-    use serde_json::{from_str, to_string};
+    use serde_json::{from_str, to_string, Value};
 
     #[test]
     fn parse_comp_eq() {

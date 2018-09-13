@@ -1,10 +1,11 @@
 use std::sync::{Arc, RwLock};
 use std::marker::PhantomData;
+use std::collections::HashSet;
 use serde::{Serialize, de::DeserializeOwned};
 use ron::ser::to_string as to_db_name;
 use lmdb::{Environment, put::Flags as PutFlags, Database, DatabaseOptions, ReadTransaction, WriteTransaction, Cursor, CursorIter, MaybeOwned, Unaligned, LmdbResultExt, traits::CreateCursor};
 
-use super::{Result, ResultWrap, KeyType, Primary, Document, Value, IndexDef, Index, IndexKind, Filter, Order, OrderKind, DatabaseDef};
+use super::{Result, ResultWrap, KeyType, Primary, Document, Value, IndexDef, Index, IndexKind, Filter, Order, OrderKind, DatabaseDef, Modify};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CollectionDef (
@@ -82,6 +83,86 @@ impl Collection {
         self.find(filter, order)?.collect::<Result<Vec<_>>>()
     }
 
+    pub fn find_ids(&self, filter: Option<Filter>) -> Result<HashSet<Primary>> {
+        let txn = Arc::new(ReadTransaction::new(self.env.clone())?);
+            
+        if let Some(filter) = filter {
+            let sel = filter.apply(&txn, &self)?;
+            if !sel.inv {
+                Ok(sel.ids)
+            } else {
+                PrimaryIterator::new(txn, self.db.clone(), OrderKind::default())?
+                    .filter(move |res| if let Ok(id) = res { sel.has(id) } else { true })
+                    .collect::<Result<HashSet<_>>>()
+            }
+        } else {
+            PrimaryIterator::new(txn, self.db.clone(), OrderKind::default())?
+                .collect::<Result<HashSet<_>>>()
+        }
+    }
+
+    pub fn update(&self, filter: Option<Filter>, modify: Modify) -> Result<usize> {
+        let found_ids = self.find_ids(filter)?;
+            
+        let mut count = 0;
+        {
+            let txn = WriteTransaction::new(self.env.clone())?;
+            let f = PutFlags::empty();
+            {
+                for id in found_ids {
+                    let (old_doc, new_doc) = {
+                        let mut access = txn.access();
+                        let old_doc = Document::<Value>::from_raw(access.get(&self.db, &Unaligned::new(id))?)?;
+                        let new_doc = Document::new(modify.apply(old_doc.get_data().clone()));
+                        
+                        access.put(&self.db, &Unaligned::new(id), &new_doc.into_raw()?, f)
+                              .wrap_err()?;
+                        
+                        (old_doc, new_doc)
+                    };
+                    
+                    self.update_indexes(&txn, Some(&old_doc), Some(&new_doc))?;
+                    
+                    count += 1;
+                }
+            }
+            
+            txn.commit().wrap_err()?;
+        }
+
+        Ok(count)
+    }
+
+    pub fn remove(&self, filter: Option<Filter>) -> Result<usize> {
+        let found_ids = self.find_ids(filter)?;
+            
+        let mut count = 0;
+        {
+            let txn = WriteTransaction::new(self.env.clone())?;
+            {
+                for id in found_ids {
+                    let old_doc = {
+                        let mut access = txn.access();
+                        let old_doc = Document::<Value>::from_raw(access.get(&self.db, &Unaligned::new(id))?)?;
+                        
+                        access.del_key(&self.db, &Unaligned::new(id))
+                              .wrap_err()?;
+                        
+                        old_doc
+                    };
+
+                    self.update_indexes(&txn, Some(&old_doc), None)?;
+                    
+                    count += 1;
+                }
+            }
+            
+            txn.commit().wrap_err()?;
+        }
+
+        Ok(count)
+    }
+
     pub fn has(&self, id: Primary) -> Result<bool> {
         let txn = self.read_txn()?;
         let access = txn.access();
@@ -111,33 +192,58 @@ impl Collection {
         
         let txn = self.write_txn()?;
 
-        {
+        let old_doc = {
             let mut access = txn.access();
-            let val = doc.into_raw()?;
+            let old_doc = if let Some(old_doc) = access.get(&self.db, &Unaligned::new(id)).to_opt()? {
+                Some(Document::<Value>::from_raw(old_doc)?)
+            } else {
+                None
+            };
             
-            access.put(&self.db, &Unaligned::new(id), &val, PutFlags::empty())
+            access.put(&self.db, &Unaligned::new(id), &doc.into_raw()?, PutFlags::empty())
                   .wrap_err()?;
-        }
 
-        self.update_indexes(&txn, Some(id), Some(&doc))?;
+            old_doc
+        };
+
+        self.update_indexes(&txn, if let Some(ref doc) = old_doc { Some(&doc) } else { None }, Some(&doc))?;
 
         txn.commit().wrap_err()?;
 
         Ok(())
     }
 
-    fn update_indexes(&self, txn: &WriteTransaction, old_id: Option<Primary>, new_doc: Option<&Document>) -> Result<()> {
-        let old_doc = old_id.map_or(Ok(None), |id| self.get(id))?;
+    pub fn delete(&self, id: Primary) -> Result<bool> {
+        let txn = self.write_txn()?;
+
+        let old_doc = {
+            let mut access = txn.access();
+            let old_doc = Document::<Value>::from_raw(access.get(&self.db, &Unaligned::new(id))?)?;
+            
+            access.del_key(&self.db, &Unaligned::new(id))
+                  .wrap_err()?;
+
+            old_doc
+        };
+
+        let status = self.update_indexes(&txn, Some(&old_doc), None)?;
+
+        txn.commit().wrap_err()?;
+
+        Ok(status)
+    }
+
+    fn update_indexes(&self, txn: &WriteTransaction, old_doc: Option<&Document>, new_doc: Option<&Document>) -> Result<bool> {
         {
             let indexes = self.indexes.read().wrap_err()?;
             let mut access = txn.access();
             
             for index in indexes.iter() {
-                index.update_index(&mut access, if let Some(ref doc) = old_doc { Some(&doc) } else { None }, new_doc)?;
+                index.update_index(&mut access, old_doc, new_doc)?;
             }
         }
         
-        Ok(())
+        Ok(old_doc.is_some())
     }
 
     pub fn last_id(&self) -> Result<Primary> {

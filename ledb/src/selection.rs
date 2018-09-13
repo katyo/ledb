@@ -5,8 +5,8 @@ use document::Primary;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Selection {
-    ids: HashSet<Primary>,
-    inv: bool
+    pub(crate) ids: HashSet<Primary>,
+    pub(crate) inv: bool
 }
 
 impl Selection {
@@ -19,6 +19,11 @@ impl Selection {
             false => self.ids.contains(id),
             true => !self.ids.contains(id),
         }
+    }
+
+    #[inline]
+    pub fn get(&self) -> (&HashSet<Primary>, bool) {
+        (&self.ids, self.inv)
     }
 }
 
