@@ -5,6 +5,7 @@ authors = ["Kayo Phoenix <kayo@illumium.org>"]
 
 [dependencies]
 byteorder = "1"
+ordered-float = "1"
 serde = "1"
 serde_derive = "1"
 serde_cbor = "0.9"

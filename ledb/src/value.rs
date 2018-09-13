@@ -2,11 +2,11 @@ use std::str::from_utf8;
 use std::mem::transmute;
 use std::borrow::Cow;
 use byteorder::{ByteOrder, NativeEndian};
+use ordered_float::OrderedFloat;
 
-use error::{Result, ResultWrap};
-use document::{Value};
+use super::{Result, ResultWrap, Value};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum KeyType {
     #[serde(rename="int")]
     Int,
@@ -24,14 +24,28 @@ impl Default for KeyType {
     fn default() -> Self { KeyType::Binary }
 }
 
-#[derive(Debug, Clone, PartialEq, PartialOrd, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum KeyData {
     Int(i64),
-    Float(f64),
+    #[serde(with="float")]
+    Float(OrderedFloat<f64>),
     String(String),
     Binary(Vec<u8>),
     Bool(bool),
+}
+
+mod float {
+    use super::{OrderedFloat};
+    use serde::{Serializer, Deserializer, Deserialize};
+    
+    pub fn serialize<S: Serializer>(OrderedFloat(val): &OrderedFloat<f64>, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_f64(*val)
+    }
+    
+    pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<OrderedFloat<f64>, D::Error> {
+        f64::deserialize(deserializer).map(OrderedFloat)
+    }
 }
 
 impl KeyData {
@@ -44,7 +58,7 @@ impl KeyData {
             },
             KeyType::Float => {
                 if raw.len() != 8 { return Err("Float key must be 8 bytes length".into()) }
-                Float(NativeEndian::read_f64(raw))
+                Float(OrderedFloat(NativeEndian::read_f64(raw)))
             },
             KeyType::String => String(from_utf8(raw).wrap_err()?.into()),
             KeyType::Binary => Binary(Vec::from(raw)),
@@ -71,7 +85,7 @@ impl KeyData {
         Some(match val {
             U64(val) => KeyData::Int(*val as i64),
             I64(val) => KeyData::Int(*val),
-            F64(val) => KeyData::Float(*val),
+            F64(val) => KeyData::Float(OrderedFloat(*val)),
             Bytes(val) => KeyData::Binary(val.clone()),
             String(val) => KeyData::String(val.clone()),
             Bool(val) => KeyData::Bool(*val),
@@ -97,13 +111,13 @@ impl KeyData {
             Cow::Borrowed(v)
         } else {
             Cow::Owned(match (typ, self) {
-                (KeyType::Float, Int(v)) => Float(*v as f64),
+                (KeyType::Float, Int(v)) => Float(OrderedFloat(*v as f64)),
                 (KeyType::Int, Float(v)) => Int(v.round() as i64),
                 (KeyType::String, Int(v)) => String(v.to_string()),
                 (KeyType::String, Float(v)) => String(v.to_string()),
                 (KeyType::String, Bool(v)) => String(v.to_string()),
                 (KeyType::Int, String(v)) => Int(if let Ok(v) = v.parse() { v } else { return None }),
-                (KeyType::Float, String(v)) => Float(if let Ok(v) = v.parse() { v } else { return None }),
+                (KeyType::Float, String(v)) => Float(if let Ok(v) = v.parse() { OrderedFloat(v) } else { return None }),
                 (KeyType::Bool, String(v)) => Bool(if let Ok(v) = v.parse() { v } else { return None }),
                 _ => return None,
             })
@@ -130,7 +144,7 @@ impl From<i64> for KeyData {
 
 impl From<f64> for KeyData {
     fn from(v: f64) -> Self {
-        KeyData::Float(v)
+        KeyData::Float(OrderedFloat(v))
     }
 }
 
@@ -199,7 +213,7 @@ mod test {
         assert_eq!(KeyData::from(123).into_type(KeyType::Int).unwrap().get_type(), KeyType::Int);
         assert_eq!(KeyData::from(123).into_type(KeyType::Float).unwrap().into_owned(), KeyData::from(123.0));
         assert_eq!(KeyData::from(123).into_type(KeyType::String).unwrap().into_owned(), KeyData::from("123"));
-        assert_eq!(KeyData::from(12.3).into_type(KeyType::Float).unwrap().into_owned(), KeyData::Float(12.3));
+        assert_eq!(KeyData::from(12.3).into_type(KeyType::Float).unwrap().into_owned(), KeyData::from(12.3));
         assert_eq!(KeyData::from(12.3).into_type(KeyType::Int).unwrap().into_owned(), KeyData::from(12));
         assert_eq!(KeyData::from(12.5).into_type(KeyType::Int).unwrap().into_owned(), KeyData::from(13));
         assert_eq!(KeyData::from(12.3).into_type(KeyType::String).unwrap().into_owned(), KeyData::from("12.3"));
