@@ -61,36 +61,34 @@ impl Index {
         Ok(Self { path, kind, key, db })
     }
 
-    // TODO: single update_index() fn
-    pub fn add_to_index(&self, access: &mut WriteAccessor, doc: &Document) -> Result<()> {
+    pub fn update_index(&self, access: &mut WriteAccessor, old_doc: Option<&Document>, new_doc: Option<&Document>) -> Result<()> {
+        let doc = old_doc.or_else(|| new_doc).ok_or_else(|| "Either old_doc or new_doc or both must present").wrap_err()?;
         let id = doc.req_id()?;
+        
+        let old_keys = old_doc.map(|doc| self.extract(doc)).unwrap_or(HashSet::new());
+        let new_keys = new_doc.map(|doc| self.extract(doc)).unwrap_or(HashSet::new());
 
+        let (old_keys, new_keys) = (old_keys.difference(&new_keys), new_keys.difference(&old_keys));
+
+        for key in old_keys {
+            access.del_item(&self.db, key.into_raw(), &Unaligned::new(id)).wrap_err()?;
+        }
+        
         let f = match self.kind {
             IndexKind::Unique => NOOVERWRITE,
             IndexKind::Duplicate => NODUPDATA,
         };
-        
-        for key in self.extract(doc) {
+
+        for key in new_keys {
             access.put(&self.db, key.into_raw(), &Unaligned::new(id), f)
                   .wrap_err()?;
         }
-
-        Ok(())
-    }
-    
-    // TODO: single update_index() fn
-    pub fn remove_from_index(&self, access: &mut WriteAccessor, doc: &Document) -> Result<()> {
-        let id = doc.req_id()?;
         
-        for key in self.extract(doc) {
-            access.del_item(&self.db, key.into_raw(), &Unaligned::new(id)).wrap_err()?;
-        }
-
         Ok(())
     }
 
-    fn extract(&self, doc: &Document) -> Vec<KeyData> {
-        let mut keys = Vec::new();
+    fn extract(&self, doc: &Document) -> HashSet<KeyData> {
+        let mut keys = HashSet::new();
         let path = self.path.split('.');
         extract_field_values(doc.get_data(), self.key, &path, &mut keys);
         keys
@@ -159,7 +157,7 @@ impl Index {
     }
 }
 
-fn extract_field_values<'a, 'i: 'a, I: Iterator<Item = &'i str> + Clone>(doc: &'a Value, typ: KeyType, path: &'a I, keys: &mut Vec<KeyData>) {
+fn extract_field_values<'a, 'i: 'a, I: Iterator<Item = &'i str> + Clone>(doc: &'a Value, typ: KeyType, path: &'a I, keys: &mut HashSet<KeyData>) {
     let mut sub_path = path.clone();
     if let Some(name) = sub_path.next() {
         use serde_cbor::Value::*;
@@ -175,14 +173,14 @@ fn extract_field_values<'a, 'i: 'a, I: Iterator<Item = &'i str> + Clone>(doc: &'
     }
 }
 
-fn extract_field_primitives(doc: &Value, typ: KeyType, keys: &mut Vec<KeyData>) {
+fn extract_field_primitives(doc: &Value, typ: KeyType, keys: &mut HashSet<KeyData>) {
     use serde_cbor::Value::*;
     match (typ, doc) {
         (_, Array(val)) => val.iter().for_each(|doc| extract_field_primitives(doc, typ, keys)),
         (typ, val) => {
             if let Some(val) = KeyData::from_val(&val) {
                 if let Some(val) = val.into_type(typ) {
-                    keys.push(val.into_owned());
+                    keys.insert(val.into_owned());
                 }
             }
         },

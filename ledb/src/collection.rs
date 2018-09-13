@@ -119,37 +119,24 @@ impl Collection {
                   .wrap_err()?;
         }
 
-        self.remove_from_indexes(&txn, id)?;
-        self.add_to_indexes(&txn, &doc)?;
+        self.update_indexes(&txn, Some(id), Some(&doc))?;
 
         txn.commit().wrap_err()?;
 
         Ok(())
     }
 
-    fn remove_from_indexes(&self, txn: &WriteTransaction, old_id: Primary) -> Result<()> {
-        if let Some(old_doc) = self.get(old_id)? {
+    fn update_indexes(&self, txn: &WriteTransaction, old_id: Option<Primary>, new_doc: Option<&Document>) -> Result<()> {
+        let old_doc = old_id.map_or(Ok(None), |id| self.get(id))?;
+        {
             let indexes = self.indexes.read().wrap_err()?;
-
             let mut access = txn.access();
             
             for index in indexes.iter() {
-                index.remove_from_index(&mut access, &old_doc)?;
+                index.update_index(&mut access, if let Some(ref doc) = old_doc { Some(&doc) } else { None }, new_doc)?;
             }
         }
-
-        Ok(())
-    }
-
-    fn add_to_indexes(&self, txn: &WriteTransaction, new_doc: &Document) -> Result<()> {
-        let indexes = self.indexes.read().wrap_err()?;
-
-        let mut access = txn.access();
         
-        for index in indexes.iter() {
-            index.add_to_index(&mut access, &new_doc)?;
-        }
-
         Ok(())
     }
 
@@ -200,7 +187,7 @@ impl Collection {
                 {
                     let (key, val) = res.wrap_err()?;
                     let doc = Document::<Value>::from_raw(val)?.with_id(key.get());
-                    index.add_to_index(&mut access, &doc)?;
+                    index.update_index(&mut access, None, Some(&doc))?;
                 }
             }
 
