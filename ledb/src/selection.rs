@@ -1,50 +1,30 @@
 use std::collections::HashSet;
-//use std::mem::swap;
 use std::ops::{Not, BitAnd, BitOr};
 
 use document::Primary;
 
-#[derive(Clone)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Selection {
-    // None is Universe
-    pub inner: Option<HashSet<Primary>>,
-    // None is Nothing
-    pub outer: Option<HashSet<Primary>>,
+    ids: HashSet<Primary>,
+    inv: bool
 }
 
 impl Selection {
-    pub fn new(ids: HashSet<Primary>) -> Self {
-        Selection { inner: Some(ids), outer: None }
-    }
-
-    pub fn normalize(&mut self) {
-        match (&mut self.inner, &mut self.outer) {
-            (Some(inner), Some(outer)) => {
-                *inner = inner.difference(outer).cloned().collect();
-                *outer = outer.difference(inner).cloned().collect();
-            },
-            _ => (),
-        }
-    }
-
-    pub fn normalized(mut self) -> Self {
-        self.normalize();
-        self
+    pub fn new(ids: HashSet<Primary>, inv: bool) -> Self {
+        Selection { ids, inv }
     }
 
     pub fn has(&self, id: &Primary) -> bool {
-        match (&self.inner, &self.outer) {
-            (Some(inner), Some(outer)) => inner.contains(id) || !outer.contains(id),
-            (Some(inner), None) => inner.contains(id),
-            (None, Some(outer)) => !outer.contains(id),
-            _ => true,
+        match self.inv {
+            false => self.ids.contains(id),
+            true => !self.ids.contains(id),
         }
     }
 }
 
-impl Default for Selection {
-    fn default() -> Self {
-        Selection { inner: None, outer: None }
+impl<T: AsRef<[Primary]>> From<T> for Selection {
+    fn from(v: T) -> Self {
+        Selection::new(v.as_ref().iter().cloned().collect(), false)
     }
 }
 
@@ -52,9 +32,8 @@ impl Not for Selection {
     type Output = Self;
 
     fn not(self) -> Self::Output {
-        //swap(&mut self.inner, &mut self.outer);
-        let Selection { inner, outer } = self;
-        Selection { inner: outer, outer: inner }
+        let Selection { ids, inv } = self;
+        Selection { ids, inv: !inv }
     }
 }
 
@@ -62,24 +41,26 @@ impl BitAnd for Selection {
     type Output = Self;
 
     fn bitand(self, other: Self) -> Self::Output {
-        let Selection { inner: inner_a, outer: outer_a } = self;
-        let Selection { inner: inner_b, outer: outer_b } = other;
-        
-        let inner = match (inner_a, inner_b) {
-            (None, None) => None,
-            (Some(a), None) => Some(a),
-            (None, Some(b)) => Some(b),
-            (Some(a), Some(b)) => Some(a.intersection(&b).cloned().collect::<HashSet<_>>()),
+        let (ids, inv) = match (self.inv, self.ids.len(), other.inv, other.ids.len()) {
+            // a & b
+            (false, _, false, _) => (self.ids.intersection(&other.ids).cloned().collect(), false),
+            // a & universe == a
+            (false, _, true, 0) => (self.ids, false),
+            // a & !b
+            (false, n, true, m) if n < m => (self.ids.difference(&other.ids).cloned().collect(), false),
+            // a & !b == !(b | !a)
+            (false, _, true, _) => (other.ids.difference(&self.ids).cloned().collect(), true),
+            // universe & b == b
+            (true, 0, false, _) => (other.ids, false),
+            // !a & b == b & !a
+            (true, n, false, m) if m < n => (other.ids.difference(&self.ids).cloned().collect(), false),
+            // !a & b == !(a | !b)
+            (true, _, false, _) => (self.ids.difference(&other.ids).cloned().collect(), true),
+            // !a | !b
+            (true, _, true, _) => (self.ids.union(&other.ids).cloned().collect(), true),
         };
 
-        let outer = match (outer_a, outer_b) {
-            (None, None) => None,
-            (Some(a), None) => Some(a),
-            (None, Some(b)) => Some(b),
-            (Some(a), Some(b)) => Some(a.union(&b).cloned().collect::<HashSet<_>>()),
-        };
-
-        Selection { inner, outer }.normalized()
+        Selection::new(ids, inv)
     }
 }
 
@@ -87,23 +68,96 @@ impl BitOr for Selection {
     type Output = Self;
 
     fn bitor(self, other: Self) -> Self::Output {
-        let Selection { inner: inner_a, outer: outer_a } = self;
-        let Selection { inner: inner_b, outer: outer_b } = other;
-        
-        let inner = match (inner_a, inner_b) {
-            (None, None) => None,
-            (Some(a), None) => Some(a),
-            (None, Some(b)) => Some(b),
-            (Some(a), Some(b)) => Some(a.union(&b).cloned().collect::<HashSet<_>>()),
-        };
+        // a | b <=> !(!a & !b)
+        !(!self & !other)
+    }
+}
 
-        let outer = match (outer_a, outer_b) {
-            (None, None) => None,
-            (Some(a), None) => Some(a),
-            (None, Some(b)) => Some(b),
-            (Some(a), Some(b)) => Some(a.intersection(&b).cloned().collect::<HashSet<_>>()),
-        };
+#[cfg(test)]
+mod test {
+    use super::Selection;
 
-        Selection { inner, outer }.normalized()
+    #[test]
+    fn not_inv_and_empty() {
+        assert_eq!(Selection::from(&[1, 2, 3, 7, 9]) &
+                   Selection::default(),
+                   Selection::default());
+    }
+
+    #[test]
+    fn not_inv_and_universe() {
+        assert_eq!(Selection::from(&[1, 2, 3, 7, 9]) &
+                   !Selection::default(),
+                   Selection::from(&[1, 2, 3, 7, 9]));
+    }
+    
+    #[test]
+    fn not_inv_and_not_inv() {
+        assert_eq!(Selection::from(&[1, 2, 3, 7, 9]) &
+                   Selection::from(&[2, 7, 5, 0, 4, 1]),
+                   Selection::from(&[1, 2, 7]));
+    }
+
+    #[test]
+    fn not_inv_and_inv() {
+        assert_eq!(Selection::from(&[1, 2, 3, 7, 9]) &
+                   !Selection::from(&[2, 7, 5, 0, 4, 1]),
+                   Selection::from(&[3, 9]));
+    }
+    
+    #[test]
+    fn inv_and_not_inv() {
+        assert_eq!(Selection::from(&[2, 7, 5, 0, 4, 1]) &
+                   !Selection::from(&[1, 2, 3, 7, 9]),
+                   !Selection::from(&[9, 3]));
+    }
+
+    #[test]
+    fn inv_and_inv() {
+        assert_eq!(!Selection::from(&[1, 2, 3, 7, 9]) &
+                   !Selection::from(&[2, 7, 5, 0, 4, 1]),
+                   !Selection::from(&[0, 1, 2, 3, 4, 5, 7, 9]));
+    }
+
+    #[test]
+    fn not_inv_or_empty() {
+        assert_eq!(Selection::from(&[1, 2, 3, 7, 9]) |
+                   Selection::default(),
+                   Selection::from(&[1, 2, 3, 7, 9]));
+    }
+
+    #[test]
+    fn not_inv_or_universe() {
+        assert_eq!(Selection::from(&[1, 2, 3, 7, 9]) |
+                   !Selection::default(),
+                   !Selection::default());
+    }
+
+    #[test]
+    fn not_inv_or_not_inv() {
+        assert_eq!(Selection::from(&[1, 2, 3, 7, 9]) |
+                   Selection::from(&[2, 7, 5, 0, 4, 1]),
+                   Selection::from(&[0, 1, 2, 3, 4, 5, 7, 9]));
+    }
+
+    #[test]
+    fn not_inv_or_inv() {
+        assert_eq!(Selection::from(&[1, 2, 3, 7, 9]) |
+                   !Selection::from(&[2, 7, 5, 0, 4, 1]),
+                   Selection::from(&[3, 9]));
+    }
+
+    #[test]
+    fn inv_or_not_inv() {
+        assert_eq!(!Selection::from(&[2, 7, 5, 0, 4, 1]) |
+                   Selection::from(&[1, 2, 3, 7, 9]),
+                   Selection::from(&[3, 9]));
+    }
+
+    #[test]
+    fn inv_or_inv() {
+        assert_eq!(!Selection::from(&[1, 2, 3, 7, 9]) |
+                   !Selection::from(&[2, 7, 5, 0, 4, 1]),
+                   !Selection::from(&[1, 2, 7]));
     }
 }

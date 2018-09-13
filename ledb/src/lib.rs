@@ -231,20 +231,20 @@ mod tests {
         mk_index(&c).unwrap();
         fill_data(&c).unwrap();
 
-        //assert_found!(c.find(json_val!({ "i": { "$gt": 3 } }), json_val!("$asc")), 3, 4, 6);
+        assert_found!(c.find(json_val!({ "i": { "$gt": 3 } }), json_val!("$asc")), 3, 4, 6);
         assert_found!(c.find(json_val!({ "n.i": { "$gt": 1 } }), json_val!("$desc")), 5, 4, 3);
     }
 
     #[test]
     fn find_int_ge() {
-        let s = test_db("find_int_gt").unwrap();
+        let s = test_db("find_int_ge").unwrap();
         let c = s.collection("test").unwrap();
 
         mk_index(&c).unwrap();
         fill_data(&c).unwrap();
 
-        //assert_found!(c.find(json_val!({ "i": { "$gt": 3 } }), json_val!("$asc")), 3, 4, 6);
-        assert_found!(c.find(json_val!({ "n.i": { "$gt": 1 } }), json_val!("$desc")), 5, 4, 3);
+        assert_found!(c.find(json_val!({ "i": { "$ge": 3 } }), json_val!("$asc")), 3, 4, 6);
+        assert_found!(c.find(json_val!({ "n.i": { "$ge": 1 } }), json_val!("$desc")), 5, 4, 3, 2);
     }
 
     #[test]
@@ -255,8 +255,14 @@ mod tests {
         mk_index(&c).unwrap();
         fill_data(&c).unwrap();
 
-        assert_found!(c.find(json_val!({ "$and": [ { "b": { "$eq": true } }, { "i": { "$eq": 2 } } ] }), json_val!("$asc")), 3);
-        assert_found!(c.find(json_val!({ "$and": [ { "n.i": { "$eq": 2 } }, { "i": { "$eq": 2 } } ] }), json_val!("$desc")), 5, 3);
+        assert_found!(c.find(json_val!({ "$and": [
+            { "b": { "$eq": true } },
+            { "i": { "$eq": 2 } }
+        ] }), json_val!("$asc")), 3);
+        assert_found!(c.find(json_val!({ "$and": [
+            { "n.i": { "$eq": 2 } },
+            { "i": { "$eq": 2 } }
+        ] }), json_val!("$desc")), 5, 3);
     }
 
     #[test]

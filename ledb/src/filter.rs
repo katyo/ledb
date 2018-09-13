@@ -14,8 +14,12 @@ pub enum Comp {
     In(Vec<KeyData>),
     #[serde(rename = "$lt")]
     Lt(KeyData),
+    #[serde(rename = "$le")]
+    Le(KeyData),
     #[serde(rename = "$gt")]
     Gt(KeyData),
+    #[serde(rename = "$ge")]
+    Ge(KeyData),
     #[serde(rename = "$bw")]
     Bw(KeyData, KeyData),
     #[serde(rename = "$has")]
@@ -48,14 +52,14 @@ impl Filter {
                 Ok(match cond {
                     Not(filter) => !filter.apply(txn, coll)?,
                     And(filters) => {
-                        let mut res = Selection::default();
+                        let mut res = !Selection::default(); // universe
                         for filter in filters {
                             res = res & filter.apply(txn, coll)?;
                         }
                         res
                     },
                     Or(filters) => {
-                        let mut res = Selection::default();
+                        let mut res = Selection::default(); // empty
                         for filter in filters {
                             res = res | filter.apply(txn, coll)?;
                         }
@@ -68,12 +72,14 @@ impl Filter {
                 let access = txn.access();
                 use self::Comp::*;
                 Ok(match comp {
-                    Eq(val) => Selection::new(index.query_set(&txn, &access, once(val))?),
-                    In(vals) => Selection::new(index.query_set(&txn, &access, vals.iter())?),
-                    Gt(val) => !Selection::new(index.query_range(&txn, &access, None, Some(val))?),
-                    Lt(val) => !Selection::new(index.query_range(&txn, &access, Some(val), None)?),
-                    Bw(val1, val2) => Selection::new(index.query_range(&txn, &access, Some(val1), Some(val2))?),
-                    Has => Selection::new(index.query_range(&txn, &access, None, None)?),
+                    Eq(val) => Selection::new(index.query_set(&txn, &access, once(val))?, false),
+                    In(vals) => Selection::new(index.query_set(&txn, &access, vals.iter())?, false),
+                    Gt(val) => Selection::new(index.query_range(&txn, &access, None, Some(val))?, true),
+                    Ge(val) => Selection::new(index.query_range(&txn, &access, Some(val), None)?, false),
+                    Lt(val) => Selection::new(index.query_range(&txn, &access, Some(val), None)?, true),
+                    Le(val) => Selection::new(index.query_range(&txn, &access, None, Some(val))?, false),
+                    Bw(val1, val2) => Selection::new(index.query_range(&txn, &access, Some(val1), Some(val2))?, false),
+                    Has => Selection::new(index.query_range(&txn, &access, None, None)?, false),
                 })
             },
         }
