@@ -21,7 +21,7 @@ pub enum Comp {
     #[serde(rename = "$ge")]
     Ge(KeyData),
     #[serde(rename = "$bw")]
-    Bw(KeyData, KeyData),
+    Bw(KeyData, bool, KeyData, bool),
     #[serde(rename = "$has")]
     Has,
 }
@@ -74,11 +74,11 @@ impl Filter {
                 Ok(match comp {
                     Eq(val) => Selection::new(index.query_set(&txn, &access, once(val))?, false),
                     In(vals) => Selection::new(index.query_set(&txn, &access, vals.iter())?, false),
-                    Gt(val) => Selection::new(index.query_range(&txn, &access, None, Some(val))?, true),
-                    Ge(val) => Selection::new(index.query_range(&txn, &access, Some(val), None)?, false),
-                    Lt(val) => Selection::new(index.query_range(&txn, &access, Some(val), None)?, true),
-                    Le(val) => Selection::new(index.query_range(&txn, &access, None, Some(val))?, false),
-                    Bw(val1, val2) => Selection::new(index.query_range(&txn, &access, Some(val1), Some(val2))?, false),
+                    Gt(val) => Selection::new(index.query_range(&txn, &access, Some((val, false)), None)?, false),
+                    Ge(val) => Selection::new(index.query_range(&txn, &access, Some((val, true)), None)?, false),
+                    Lt(val) => Selection::new(index.query_range(&txn, &access, None, Some((val, false)))?, false),
+                    Le(val) => Selection::new(index.query_range(&txn, &access, None, Some((val, true)))?, false),
+                    Bw(val1, inc1, val2, inc2) => Selection::new(index.query_range(&txn, &access, Some((val1, *inc1)), Some((val2, *inc2)))?, false),
                     Has => Selection::new(index.query_range(&txn, &access, None, None)?, false),
                 })
             },

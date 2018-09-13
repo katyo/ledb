@@ -22,7 +22,6 @@ mod value;
 mod document;
 mod selection;
 mod filter;
-mod extra;
 mod storage;
 mod collection;
 mod index;
@@ -220,8 +219,8 @@ mod tests {
         mk_index(&c).unwrap();
         fill_data(&c).unwrap();
 
-        assert_found!(c.find(json_val!({ "i": { "$bw": [2, 3] } }), json_val!("$asc")), 2, 3, 5, 6);
-        assert_found!(c.find(json_val!({ "n.i": { "$bw": [1, 2] } }), json_val!("$desc")), 5, 3, 2);
+        assert_found!(c.find(json_val!({ "i": { "$bw": [2, true, 3, true] } }), json_val!("$asc")), 2, 3, 5, 6);
+        assert_found!(c.find(json_val!({ "n.i": { "$bw": [1, true, 2, true] } }), json_val!("$desc")), 5, 3, 2);
     }
 
     #[test]
@@ -246,6 +245,30 @@ mod tests {
 
         assert_found!(c.find(json_val!({ "i": { "$ge": 3 } }), json_val!("$asc")), 3, 4, 6);
         assert_found!(c.find(json_val!({ "n.i": { "$ge": 1 } }), json_val!("$desc")), 5, 4, 3, 2);
+    }
+
+    #[test]
+    fn find_int_lt() {
+        let s = test_db("find_int_lt").unwrap();
+        let c = s.collection("test").unwrap();
+
+        mk_index(&c).unwrap();
+        fill_data(&c).unwrap();
+
+        assert_found!(c.find(json_val!({ "i": { "$lt": 3 } }), json_val!("$asc")), 2, 3, 4, 5);
+        assert_found!(c.find(json_val!({ "n.i": { "$lt": 2 } }), json_val!("$desc")), 6, 2);
+    }
+
+    #[test]
+    fn find_int_le() {
+        let s = test_db("find_int_le").unwrap();
+        let c = s.collection("test").unwrap();
+
+        mk_index(&c).unwrap();
+        fill_data(&c).unwrap();
+
+        assert_found!(c.find(json_val!({ "i": { "$le": 3 } }), json_val!("$asc")), 2, 3, 4, 5, 6);
+        assert_found!(c.find(json_val!({ "n.i": { "$le": 2 } }), json_val!("$desc")), 6, 5, 3, 2);
     }
 
     #[test]

@@ -4,7 +4,7 @@ use std::sync::{Arc, RwLock};
 use ron::de::from_str as from_db_name;
 use lmdb::{EnvBuilder, Environment, open::Flags as OpenFlags, Database, DatabaseOptions, ReadTransaction, Cursor, CursorIter, MaybeOwned};
 
-use super::{Result, ResultWrap, CollectionDef, Collection, IndexDef, Index, IndexKind};
+use super::{Result, ResultWrap, CollectionDef, Collection, IndexDef};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DatabaseDef {
