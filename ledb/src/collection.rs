@@ -112,7 +112,7 @@ impl Collection {
                 for id in found_ids {
                     let (old_doc, new_doc) = {
                         let mut access = txn.access();
-                        let old_doc = Document::<Value>::from_raw(access.get(&self.db, &Unaligned::new(id))?)?;
+                        let old_doc = Document::<Value>::from_raw(access.get(&self.db, &Unaligned::new(id))?)?.with_id(id);
                         let new_doc = Document::new(modify.apply(old_doc.get_data().clone()));
                         
                         access.put(&self.db, &Unaligned::new(id), &new_doc.into_raw()?, f)
@@ -143,7 +143,7 @@ impl Collection {
                 for id in found_ids {
                     let old_doc = {
                         let mut access = txn.access();
-                        let old_doc = Document::<Value>::from_raw(access.get(&self.db, &Unaligned::new(id))?)?;
+                        let old_doc = Document::<Value>::from_raw(access.get(&self.db, &Unaligned::new(id))?)?.with_id(id);
                         
                         access.del_key(&self.db, &Unaligned::new(id))
                               .wrap_err()?;
@@ -164,7 +164,7 @@ impl Collection {
     }
 
     pub fn has(&self, id: Primary) -> Result<bool> {
-        let txn = self.read_txn()?;
+        let txn = ReadTransaction::new(self.env.clone()).wrap_err()?;
         let access = txn.access();
 
         access.get::<Unaligned<Primary>, [u8]>(&self.db, &Unaligned::new(id))
@@ -172,7 +172,7 @@ impl Collection {
     }
 
     pub fn get<T: DeserializeOwned>(&self, id: Primary) -> Result<Option<Document<T>>> {
-        let txn = self.read_txn()?;
+        let txn = ReadTransaction::new(self.env.clone()).wrap_err()?;
         let access = txn.access();
 
         Ok(match access.get::<Unaligned<Primary>, [u8]>(&self.db, &Unaligned::new(id))
@@ -190,12 +190,12 @@ impl Collection {
         let id = doc.get_id().unwrap();
         let doc = doc.into_gen()?;
         
-        let txn = self.write_txn()?;
+        let txn = WriteTransaction::new(self.env.clone()).wrap_err()?;
 
         let old_doc = {
             let mut access = txn.access();
             let old_doc = if let Some(old_doc) = access.get(&self.db, &Unaligned::new(id)).to_opt()? {
-                Some(Document::<Value>::from_raw(old_doc)?)
+                Some(Document::<Value>::from_raw(old_doc)?.with_id(id))
             } else {
                 None
             };
@@ -214,11 +214,11 @@ impl Collection {
     }
 
     pub fn delete(&self, id: Primary) -> Result<bool> {
-        let txn = self.write_txn()?;
+        let txn = WriteTransaction::new(self.env.clone()).wrap_err()?;
 
         let old_doc = {
             let mut access = txn.access();
-            let old_doc = Document::<Value>::from_raw(access.get(&self.db, &Unaligned::new(id))?)?;
+            let old_doc = Document::<Value>::from_raw(access.get(&self.db, &Unaligned::new(id))?)?.with_id(id);
             
             access.del_key(&self.db, &Unaligned::new(id))
                   .wrap_err()?;
@@ -283,11 +283,11 @@ impl Collection {
         }
 
         {
-            let txn = self.write_txn()?;
+            let txn = WriteTransaction::new(self.env.clone()).wrap_err()?;
             {
                 let mut access = txn.access();
 
-                let txn2 = self.read_txn()?;
+                let txn2 = ReadTransaction::new(self.env.clone()).wrap_err()?;
                 let cursor2 = txn2.cursor(self.db.clone()).wrap_err()?;
                 let access2 = txn2.access();
                 
@@ -344,14 +344,6 @@ impl Collection {
         } else {
             Err(format!("Missing index for field '{}'", path.as_ref())).wrap_err()
         }
-    }
-
-    pub(crate) fn read_txn(&self) -> Result<ReadTransaction> {
-        ReadTransaction::new(self.env.clone()).wrap_err()
-    }
-
-    fn write_txn(&self) -> Result<WriteTransaction> {
-        WriteTransaction::new(self.env.clone()).wrap_err()
     }
 }
 
@@ -415,7 +407,7 @@ impl<T> Iterator for DocumentsIterator<T>
     fn next(&mut self) -> Option<Self::Item> {
         match self.ids_iter.next() {
             Some(Ok(id)) => Some(self.txn.access().get(&self.db, &Unaligned::new(id)).wrap_err()
-                                 .and_then(Document::<T>::from_raw).wrap_err()),
+                                   .and_then(Document::<T>::from_raw).map(|doc| doc.with_id(id)).wrap_err()),
             Some(Err(e)) => Some(Err(e)),
             None => None,
         }

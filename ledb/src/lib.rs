@@ -46,7 +46,7 @@ mod tests {
     macro_rules! assert_found {
         ($res:expr $(,$exp:expr)*) => {
             let ids: Vec<Primary> = vec![$($exp),*];
-            assert_eq!($res.unwrap().map(|doc: Result<Document<Value>>| doc.unwrap().get_id().unwrap()).collect::<Vec<_>>(), ids)
+            assert_eq!($res.unwrap().map(|doc: Result<Document<Value>>| doc.unwrap().req_id().unwrap()).collect::<Vec<_>>(), ids)
         }
     }
     
@@ -216,7 +216,7 @@ mod tests {
 
     #[test]
     fn find_int_bw() {
-        let s = test_db("find_int_eq").unwrap();
+        let s = test_db("find_int_bw").unwrap();
         let c = s.collection("test").unwrap();
 
         mk_index(&c).unwrap();

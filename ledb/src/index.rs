@@ -68,15 +68,17 @@ impl Index {
 
         let (old_keys, new_keys) = (old_keys.difference(&new_keys), new_keys.difference(&old_keys));
 
+        //println!("Update index {} --{:?} ++{:?}", &self.path, &old_keys, &new_keys);
+
         for key in old_keys {
             access.del_item(&self.db, key.into_raw(), &Unaligned::new(id)).wrap_err()?;
         }
-        
+
         let f = match self.kind {
             IndexKind::Unique => NOOVERWRITE,
             IndexKind::Duplicate => NODUPDATA,
         };
-
+        
         for key in new_keys {
             access.put(&self.db, key.into_raw(), &Unaligned::new(id), f)
                   .wrap_err()?;
