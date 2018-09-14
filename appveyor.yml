@@ -104,7 +104,7 @@ matrix:
 install:
   - appveyor DownloadFile https://win.rustup.rs/ -FileName rustup-init.exe
   - rustup-init -yv --default-toolchain %channel% --default-host %target%
-  - set PATH=%PATH%;%USERPROFILE%\.cargo\bin
+  - set PATH=%PATH%;%USERPROFILE%\.cargo\bin;C:\mingw-w64\i686-6.3.0-posix-dwarf-rt_v5-rev1\bin;C:\mingw-w64\x86_64-6.3.0-posix-seh-rt_v5-rev1\bin
   - rustc -vV
   - cargo -vV
 
