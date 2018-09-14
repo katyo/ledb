@@ -424,16 +424,14 @@ impl Collection {
             return Ok(false);
         };
 
-        {
-            //let index = &indexes[index_pos];
-            //let index_db = &index.db;
-            //index_db.delete().wrap_err()?;
+        let index = indexes.remove(index_pos);
+
+        if let Ok(Index { db, .. }) = Arc::try_unwrap(index) {
+            if let Ok(db) = Arc::try_unwrap(db) {
+                db.delete().wrap_err()?;
+            }
         }
-
-        indexes.remove(index_pos);
         
-        //index.db.delete().wrap_err()?;
-
         Ok(true)
     }
 
