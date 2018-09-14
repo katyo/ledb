@@ -20,11 +20,6 @@ impl Selection {
             true => !self.ids.contains(id),
         }
     }
-
-    #[inline]
-    pub fn get(&self) -> (&HashSet<Primary>, bool) {
-        (&self.ids, self.inv)
-    }
 }
 
 impl<T: AsRef<[Primary]>> From<T> for Selection {

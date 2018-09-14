@@ -10,4 +10,4 @@ Cargo.lock
 **/*.rs.bk
 
 # Temporary test databases
-/.test_dbs/
+.test_dbs/

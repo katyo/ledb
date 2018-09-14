@@ -1,7 +1,19 @@
 [package]
 name = "ledb"
 version = "0.1.0"
-authors = ["Kayo Phoenix <kayo@illumium.org>"]
+authors = ["Kayo <kayo@illumium.org>"]
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/katyo/ledb"
+documentation = "https://docs.rs/ledb"
+homepage = "https://github.com/katyo/ledb"
+keywords = ["document storage", "persistence", "json", "cbor", "lmdb", "btree"]
+categories = ["database"]
+description = "Lightweight embedded database built over LMDB"
+
+[badges]
+travis-ci = { repository = "katyo/ledb" }
+appveyor = { repository = "katyo/ledb" }
 
 [dependencies]
 byteorder = "1"
