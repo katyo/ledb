@@ -2,6 +2,7 @@
 
 members = [
   "ledb",
+  "ledb-actix",
 ]
 
 [profile.release]
