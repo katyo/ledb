@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+
+<svg
+   xmlns:dc="http://purl.org/dc/elements/1.1/"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   width="32"
+   height="32"
+   viewBox="0 0 8.4666665 8.466667"
+   version="1.1"
+   id="svg8"
+   inkscape:version="0.92.1 r15371"
+   sodipodi:docname="icon.svg">
+  <defs
+     id="defs2" />
+  <sodipodi:namedview
+     id="base"
+     pagecolor="#ffffff"
+     bordercolor="#666666"
+     borderopacity="1.0"
+     inkscape:pageopacity="0.0"
+     inkscape:pageshadow="2"
+     inkscape:zoom="4"
+     inkscape:cx="13.150073"
+     inkscape:cy="17.609644"
+     inkscape:document-units="mm"
+     inkscape:current-layer="layer2"
+     showgrid="false"
+     units="px"
+     inkscape:window-width="1024"
+     inkscape:window-height="706"
+     inkscape:window-x="0"
+     inkscape:window-y="33"
+     inkscape:window-maximized="1">
+    <inkscape:grid
+       type="xygrid"
+       id="grid4489" />
+  </sodipodi:namedview>
+  <metadata
+     id="metadata5">
+    <rdf:RDF>
+      <cc:Work
+         rdf:about="">
+        <dc:format>image/svg+xml</dc:format>
+        <dc:type
+           rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
+        <dc:title></dc:title>
+      </cc:Work>
+    </rdf:RDF>
+  </metadata>
+  <g
+     inkscape:groupmode="layer"
+     id="layer2"
+     inkscape:label="uSD"
+     style="display:inline">
+    <path
+       style="color:#000000;display:inline;overflow:visible;visibility:visible;opacity:1;vector-effect:none;fill:#ffc20e;fill-opacity:1;fill-rule:nonzero;stroke:none;stroke-width:0.1;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1;marker:none;enable-background:accumulate"
+       d="m 0.72191931,1.3234339 c -0.3906964,0 -0.7053833,0.2723991 -0.7053833,0.6102986 v 4.6591472 c 0,0.3378993 0.3146869,0.6097817 0.7053833,0.6097817 H 2.8881954 l 0.5270995,-0.4242633 0.587561,0.00156 c 0,0 0.2103688,0.062248 0.2769856,0.4227132 H 4.9412999 L 5.6172277,6.4528474 8.4583978,6.4280427 8.4826866,6.4047884 V 1.9337325 c 0,-0.3378995 -0.3146869,-0.6102986 -0.7053834,-0.6102986 z"
+       id="rect4645"
+       inkscape:connector-curvature="0" />
+    <text
+       xml:space="preserve"
+       style="font-style:italic;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:7.58290863px;line-height:125%;font-family:'Chancery Uralic';-inkscape-font-specification:'Chancery Uralic, Italic';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-feature-settings:normal;text-align:start;letter-spacing:0px;word-spacing:0px;writing-mode:lr-tb;text-anchor:start;fill:#000000;fill-opacity:1;stroke:#000000;stroke-width:0.14186132;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+       x="0.50824958"
+       y="6.2141218"
+       id="text4546"
+       transform="scale(0.99871346,1.0012882)"><tspan
+         sodipodi:role="line"
+         x="0.50824958"
+         y="6.2141218"
+         id="tspan4554"
+         style="stroke:#000000;stroke-width:0.14186132;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1">L</tspan></text>
+    <text
+       xml:space="preserve"
+       style="font-style:italic;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:4.45772505px;line-height:125%;font-family:'Chancery Uralic';-inkscape-font-specification:'Chancery Uralic, Italic';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-feature-settings:normal;text-align:start;letter-spacing:0px;word-spacing:0px;writing-mode:lr-tb;text-anchor:start;display:inline;fill:#000000;fill-opacity:1;stroke:#000000;stroke-width:0.08339527;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+       x="4.5316916"
+       y="4.3471322"
+       id="text4546-3"
+       transform="scale(0.99871346,1.0012882)"><tspan
+         sodipodi:role="line"
+         x="4.5316916"
+         y="4.3471322"
+         id="tspan4554-6"
+         style="stroke:#000000;stroke-width:0.08339527;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1">E</tspan></text>
+  </g>
+</svg>
