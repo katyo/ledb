@@ -91,7 +91,7 @@ impl Collection {
                 all_ids.collect::<Result<Vec<_>>>()?
             };
         
-        Ok(DocumentsIterator::new(txn.clone(), self.db.clone(), filtered_ids)?)
+        Ok(DocumentsIterator::new(self.env.clone(), self.db.clone(), filtered_ids)?)
     }
 
     /// Find documents using optional filter and ordering
@@ -507,15 +507,18 @@ impl Iterator for PrimaryIterator {
 /// The `DocumentsIterator::size_hint()` method gets actual number of found documents.
 ///
 pub struct DocumentsIterator<T> {
+    env: Arc<Environment>,
     db: Arc<Database<'static>>,
-    txn: Arc<ReadTransaction<'static>>,
-    ids_iter: Box<Iterator<Item = Primary>>,
+    ids_iter: Box<Iterator<Item = Primary> + Send>,
     phantom_doc: PhantomData<T>,
 }
 
 impl<T> DocumentsIterator<T> {
-    pub fn new<I: IntoIterator<Item = Primary> + 'static>(txn: Arc<ReadTransaction<'static>>, db: Arc<Database<'static>>, ids_iter: I) -> Result<Self> {
-        Ok(Self { db, txn, ids_iter: Box::new(ids_iter.into_iter()), phantom_doc: PhantomData })
+    pub fn new<I>(env: Arc<Environment>, db: Arc<Database<'static>>, ids_iter: I) -> Result<Self>
+    where I: IntoIterator<Item = Primary> + 'static,
+          I::IntoIter: Send,
+    {
+        Ok(Self { env, db, ids_iter: Box::new(ids_iter.into_iter()), phantom_doc: PhantomData })
     }
 }
 
@@ -526,8 +529,17 @@ impl<T> Iterator for DocumentsIterator<T>
 
     fn next(&mut self) -> Option<Self::Item> {
         self.ids_iter
-            .next().map(|id| self.txn.access().get(&self.db, &Unaligned::new(id)).wrap_err()
-                        .and_then(Document::<T>::from_raw).map(|doc| doc.with_id(id)).wrap_err())
+            .next().map(|id| {
+                let txn = ReadTransaction::new(self.env.clone())?;
+                {
+                    let access = txn.access();
+                    access.get(&self.db, &Unaligned::new(id))
+                          .wrap_err()
+                          .and_then(Document::<T>::from_raw)
+                          .map(|doc| doc.with_id(id))
+                          .wrap_err()
+                }
+            })
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
