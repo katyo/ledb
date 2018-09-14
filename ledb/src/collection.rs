@@ -64,16 +64,16 @@ impl Collection {
             Order::Field(path, order) => Box::new(self.req_index(path)?.query_iter(txn.clone(), order)?),
         };
         
-        let filtered_ids: Box<Iterator<Item = Result<Primary>>> =
+        let filtered_ids =
             if let Some(filter) = filter {
                 let sel = filter.apply(&txn, &self)?;
-                Box::new(all_ids.filter(move |res| if let Ok(id) = res {
+                all_ids.filter(move |res| if let Ok(id) = res {
                     sel.has(&id)
                 } else {
                     true
-                }))
+                }).collect::<Result<Vec<_>>>()?
             } else {
-                Box::new(all_ids)
+                all_ids.collect::<Result<Vec<_>>>()?
             };
         
         Ok(DocumentsIterator::new(txn.clone(), self.db.clone(), filtered_ids)?)
@@ -448,13 +448,13 @@ impl Iterator for PrimaryIterator {
 pub struct DocumentsIterator<T> {
     db: Arc<Database<'static>>,
     txn: Arc<ReadTransaction<'static>>,
-    ids_iter: Box<Iterator<Item = Result<Primary>>>,
+    ids_iter: Box<Iterator<Item = Primary>>,
     phantom_doc: PhantomData<T>,
 }
 
 impl<T> DocumentsIterator<T> {
-    pub fn new(txn: Arc<ReadTransaction<'static>>, db: Arc<Database<'static>>, ids_iter: Box<Iterator<Item = Result<Primary>>>) -> Result<Self> {
-        Ok(Self { db, txn, ids_iter, phantom_doc: PhantomData })
+    pub fn new<I: IntoIterator<Item = Primary> + 'static>(txn: Arc<ReadTransaction<'static>>, db: Arc<Database<'static>>, ids_iter: I) -> Result<Self> {
+        Ok(Self { db, txn, ids_iter: Box::new(ids_iter.into_iter()), phantom_doc: PhantomData })
     }
 }
 
@@ -464,11 +464,12 @@ impl<T> Iterator for DocumentsIterator<T>
     type Item = Result<Document<T>>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        match self.ids_iter.next() {
-            Some(Ok(id)) => Some(self.txn.access().get(&self.db, &Unaligned::new(id)).wrap_err()
-                                   .and_then(Document::<T>::from_raw).map(|doc| doc.with_id(id)).wrap_err()),
-            Some(Err(e)) => Some(Err(e)),
-            None => None,
-        }
+        self.ids_iter
+            .next().map(|id| self.txn.access().get(&self.db, &Unaligned::new(id)).wrap_err()
+                        .and_then(Document::<T>::from_raw).map(|doc| doc.with_id(id)).wrap_err())
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.ids_iter.size_hint()
     }
 }

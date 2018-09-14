@@ -171,6 +171,7 @@ mod tests {
         mk_index(&c).unwrap();
         fill_data(&c).unwrap();
 
+        assert_eq!(c.find::<Value>(json_val!(null), json_val!({ "s": "$asc" })).unwrap().size_hint(), (6, Some(6)));
         assert_found!(c.find(json_val!(null), json_val!({ "s": "$asc" })), 3, 5, 6, 1, 2, 4);
         assert_found!(c.find(json_val!(null), json_val!({ "s": "$desc" })), 4, 2, 1, 6, 5, 3);
     }
@@ -183,8 +184,10 @@ mod tests {
         mk_index(&c).unwrap();
         fill_data(&c).unwrap();
 
+        assert_eq!(c.find::<Value>(json_val!({ "s": { "$eq": "xyz" } }), json_val!("$asc")).unwrap().size_hint(), (1, Some(1)));
         assert_found!(c.find(json_val!({ "s": { "$eq": "xyz" } }), json_val!("$asc")), 4);
         assert_found!(c.find(json_val!({ "n.a": { "$eq": "t1" } }), json_val!("$asc")), 2, 5);
+        assert_eq!(c.find::<Value>(json_val!({ "n.a": { "$eq": "t2" } }), json_val!("$desc")).unwrap().size_hint(), (3, Some(3)));
         assert_found!(c.find(json_val!({ "n.a": { "$eq": "t2" } }), json_val!("$desc")), 6, 4, 2);
     }
 
