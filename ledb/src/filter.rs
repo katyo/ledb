@@ -1,51 +1,64 @@
 use std::iter::once;
 use lmdb::{ReadTransaction};
 
-use error::{Result};
-use value::{KeyData};
-use selection::{Selection};
-use collection::{Collection};
+use super::{Result, KeyData, Selection, Collection};
 
+/// Comparison operator of filter
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Comp {
+    /// Equal
     #[serde(rename = "$eq")]
     Eq(KeyData),
+    /// In set (not implemented)
     #[serde(rename = "$in")]
     In(Vec<KeyData>),
+    /// Less than
     #[serde(rename = "$lt")]
     Lt(KeyData),
+    /// Less than or equal
     #[serde(rename = "$le")]
     Le(KeyData),
+    /// Greater than
     #[serde(rename = "$gt")]
     Gt(KeyData),
+    /// Greater than or equal
     #[serde(rename = "$ge")]
     Ge(KeyData),
+    /// Between (in range)
     #[serde(rename = "$bw")]
     Bw(KeyData, bool, KeyData, bool),
+    /// Has (not implemented)
     #[serde(rename = "$has")]
     Has,
 }
 
+/// Condition operator of filter
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Cond {
+    /// Not (sub-condition is false)
     #[serde(rename = "$not")]
     Not(Box<Filter>),
+    /// And (all of sub-conditions is true)
     #[serde(rename = "$and")]
     And(Vec<Filter>),
+    /// Or (any of sub-conditions is true)
     #[serde(rename = "$or")]
     Or(Vec<Filter>),
 }
 
+/// Filter operator
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum Filter {
+    /// Condition operator
     Cond(Cond),
+    /// Comparison operator
     #[serde(with = "comp")]
     Comp(String, Comp),
 }
 
 impl Filter {
-    pub fn apply(&self, txn: &ReadTransaction<'static>, coll: &Collection) -> Result<Selection> {
+    pub(crate) fn apply(&self, txn: &ReadTransaction<'static>, coll: &Collection) -> Result<Selection> {
         match self {
             Filter::Cond(cond) => {
                 use self::Cond::*;
@@ -86,10 +99,13 @@ impl Filter {
     }
 }
 
+/// The kind ot order
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum OrderKind {
+    /// Ascending ordering
     #[serde(rename="$asc")]
     Asc,
+    /// Descending ordering
     #[serde(rename="$desc")]
     Desc,
 }
@@ -98,10 +114,17 @@ impl Default for OrderKind {
     fn default() -> Self { OrderKind::Asc }
 }
 
+/// Ordering operator
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum Order {
+    /// Order by primary key/identifier of document
+    ///
+    /// This is default ordering
+    ///
     Primary(OrderKind),
+
+    /// Order by specified indexed field
     #[serde(with = "order")]
     Field(String, OrderKind),
 }

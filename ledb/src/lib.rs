@@ -29,13 +29,17 @@ mod index;
 
 pub use error::{Error, Result, ResultWrap};
 pub use document::{Primary, Document, Value};
-pub use storage::{Storage, DatabaseDef};
-pub use collection::{Collection, CollectionDef, DocumentsIterator};
-pub use index::{Index, IndexKind, IndexDef};
-pub use selection::{Selection};
+pub use storage::{Storage};
+pub use collection::{Collection, DocumentsIterator};
+pub use index::{IndexKind};
 pub use value::{KeyType, KeyData};
 pub use filter::{Filter, Comp, Cond, OrderKind, Order};
 pub use modify::{Modify, Action};
+
+use storage::{DatabaseDef};
+use collection::{CollectionDef};
+use index::{Index, IndexDef};
+use selection::{Selection};
 
 #[cfg(test)]
 mod tests {

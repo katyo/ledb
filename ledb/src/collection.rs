@@ -8,7 +8,7 @@ use lmdb::{Environment, put::Flags as PutFlags, Database, DatabaseOptions, ReadT
 use super::{Result, ResultWrap, KeyType, Primary, Document, Value, IndexDef, Index, IndexKind, Filter, Order, OrderKind, DatabaseDef, Modify};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct CollectionDef (
+pub(crate) struct CollectionDef (
     /// Collection name
     pub String,
 );
@@ -19,6 +19,7 @@ impl CollectionDef {
     }
 }
 
+/// Collection of documents
 pub struct Collection {
     pub(crate) name: String,
     pub(crate) indexes: RwLock<Vec<Arc<Index>>>,
@@ -27,7 +28,7 @@ pub struct Collection {
 }
 
 impl Collection {
-    pub fn new(env: Arc<Environment>, def: CollectionDef, index_defs: Vec<IndexDef>) -> Result<Self> {        
+    pub(crate) fn new(env: Arc<Environment>, def: CollectionDef, index_defs: Vec<IndexDef>) -> Result<Self> {        
         let db_name = to_db_name(&DatabaseDef::Collection(def.clone())).wrap_err()?;
         
         let CollectionDef(name) = def;
@@ -47,7 +48,13 @@ impl Collection {
         
         Ok(Self { name, indexes, env, db })
     }
-    
+
+    /// Insert document into collection
+    ///
+    /// The primary key/identifier of document will be selected by auto incrementing the id of last inserted document.
+    ///
+    /// Primary key/identifier of new inserted document will be returned.
+    ///
     pub fn insert<T: Serialize>(&self, doc: &T) -> Result<Primary> {
         let id = self.new_id()?;
 
@@ -56,6 +63,14 @@ impl Collection {
         Ok(id)
     }
 
+    /// Find documents using optional filter and ordering
+    ///
+    /// When none filter specified then all documents will be found.
+    ///
+    /// Iterator across found documents will be returned.
+    ///
+    /// You can use `DocumentsIterator::size_hint()` for getting the total number of found documents.
+    ///
     pub fn find<T: DeserializeOwned>(&self, filter: Option<Filter>, order: Order) -> Result<DocumentsIterator<T>> {
         let txn = Arc::new(ReadTransaction::new(self.env.clone())?);
 
@@ -79,6 +94,11 @@ impl Collection {
         Ok(DocumentsIterator::new(txn.clone(), self.db.clone(), filtered_ids)?)
     }
 
+    /// Find documents using optional filter and ordering
+    ///
+    /// When none filter specified then all documents will be found.
+    ///
+    /// The vector with found documents will be returned.
     pub fn find_all<T: DeserializeOwned>(&self, filter: Option<Filter>, order: Order) -> Result<Vec<Document<T>>> {
         self.find(filter, order)?.collect::<Result<Vec<_>>>()
     }
@@ -101,6 +121,12 @@ impl Collection {
         }
     }
 
+    /// Update documents using optional filter and modifier
+    ///
+    /// *Note*: When none filter specified then all documents will be modified.
+    ///
+    /// Returns the number of affected documents.
+    ///
     pub fn update(&self, filter: Option<Filter>, modify: Modify) -> Result<usize> {
         let found_ids = self.find_ids(filter)?;
             
@@ -133,6 +159,12 @@ impl Collection {
         Ok(count)
     }
 
+    /// Remove documents using optional filter
+    ///
+    /// *Note*: When none filter specified then all documents will be removed.
+    ///
+    /// Returns the number of affected documents.
+    ///
     pub fn remove(&self, filter: Option<Filter>) -> Result<usize> {
         let found_ids = self.find_ids(filter)?;
             
@@ -163,11 +195,16 @@ impl Collection {
         Ok(count)
     }
 
+    /// Dump all documents which stored into the collection
     #[inline]
     pub fn dump<T: DeserializeOwned>(&self) -> Result<DocumentsIterator<T>> {
         self.find(None, Order::default())
     }
 
+    /// Load new documents into the collection
+    ///
+    /// *Note*: The old documents will be removed.
+    ///
     pub fn load<T: Serialize, I>(&self, docs: I) -> Result<usize>
         where I: IntoIterator<Item = Document<T>>
     {
@@ -198,11 +235,16 @@ impl Collection {
         Ok(count)
     }
 
+    /// Remove all documents from the collection
+    ///
+    /// Shortcut for `Collection::remove(None)`.
+    ///
     #[inline]
     pub fn purge(&self) -> Result<usize> {
         self.remove(None)
     }
 
+    /// Checks the collection contains document with specified primary key
     pub fn has(&self, id: Primary) -> Result<bool> {
         let txn = ReadTransaction::new(self.env.clone()).wrap_err()?;
         let access = txn.access();
@@ -211,6 +253,7 @@ impl Collection {
             .to_opt().map(|res| res != None).wrap_err()
     }
 
+    /// Get document from collection using primary key/identifier
     pub fn get<T: DeserializeOwned>(&self, id: Primary) -> Result<Option<Document<T>>> {
         let txn = ReadTransaction::new(self.env.clone()).wrap_err()?;
         let access = txn.access();
@@ -222,6 +265,10 @@ impl Collection {
             })
     }
 
+    /// Replace document in the collection
+    ///
+    /// *Note*: The document must have primary key/identifier.
+    ///
     pub fn put<T: Serialize>(&self, doc: &Document<T>) -> Result<()> {
         if !doc.has_id() {
             return Err("Document id is missing".into());
@@ -253,6 +300,7 @@ impl Collection {
         Ok(())
     }
 
+    /// Delete document with specified primary key/identifier from the collection
     pub fn delete(&self, id: Primary) -> Result<bool> {
         let txn = WriteTransaction::new(self.env.clone()).wrap_err()?;
 
@@ -286,6 +334,7 @@ impl Collection {
         Ok(old_doc.is_some())
     }
 
+    /// Get the last primary key/identifier of inserted document
     pub fn last_id(&self) -> Result<Primary> {
         let txn = ReadTransaction::new(self.env.clone()).wrap_err()?;
         let mut cursor = txn.cursor(self.db.clone()).wrap_err()?;
@@ -295,15 +344,18 @@ impl Collection {
             .to_opt().map(|res| res.map(|(key, _val)| key.get()).unwrap_or(0)).wrap_err()
     }
 
+    /// Get the new primary key/identifier
     pub fn new_id(&self) -> Result<Primary> {
         self.last_id().map(|id| id + 1)
     }
-    
+
+    /// Get indexes info from the collection
     pub fn get_indexes(&self) -> Result<Vec<(String, IndexKind, KeyType)>> {
         let indexes = self.indexes.read().wrap_err()?;
         Ok(indexes.iter().map(|index| (index.path.clone(), index.kind, index.key)).collect())
     }
 
+    /// Ensure index for the collection
     pub fn ensure_index<P: AsRef<str>>(&self, path: P, kind: IndexKind, key: KeyType) -> Result<bool> {
         if let Some(index) = self.get_index(&path)? {
             if index.kind == kind && index.key == key {
@@ -315,7 +367,8 @@ impl Collection {
 
         self.create_index(&path, kind, key)
     }
-    
+
+    /// Create index for the collection
     pub fn create_index<P: AsRef<str>>(&self, path: P, kind: IndexKind, key: KeyType) -> Result<bool> {
         let path = path.as_ref();
         
@@ -359,6 +412,7 @@ impl Collection {
         Ok(true)
     }
 
+    /// Remove index from the collection
     pub fn remove_index<P: AsRef<str>>(&self, path: P) -> Result<bool> {
         let path = path.as_ref();
         
@@ -383,6 +437,7 @@ impl Collection {
         Ok(true)
     }
 
+    /// Checks the index for specified field exists for the collection
     pub fn has_index<P: AsRef<str>>(&self, path: P) -> Result<bool> {
         let path = path.as_ref();
         let indexes = self.indexes.read().wrap_err()?;
@@ -406,7 +461,7 @@ impl Collection {
     }
 }
 
-pub struct PrimaryIterator {
+pub(crate) struct PrimaryIterator {
     txn: Arc<ReadTransaction<'static>>,
     cur: Cursor<'static, 'static>,
     order: OrderKind,
@@ -445,6 +500,12 @@ impl Iterator for PrimaryIterator {
     }
 }
 
+/// Iterator across found documents
+///
+/// You can use that to extract documents contents
+///
+/// The `DocumentsIterator::size_hint()` method gets actual number of found documents.
+///
 pub struct DocumentsIterator<T> {
     db: Arc<Database<'static>>,
     txn: Arc<ReadTransaction<'static>>,

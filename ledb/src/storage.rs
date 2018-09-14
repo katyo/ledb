@@ -7,19 +7,26 @@ use lmdb::{EnvBuilder, Environment, open::Flags as OpenFlags, Database, Database
 use super::{Result, ResultWrap, CollectionDef, Collection, IndexDef};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub enum DatabaseDef {
+pub(crate) enum DatabaseDef {
     #[serde(rename="c")]
     Collection(CollectionDef),
     #[serde(rename="i")]
     Index(IndexDef),
 }
 
+/// Storage of documents
 pub struct Storage {
     env: Arc<Environment>,
     collections: RwLock<Vec<Arc<Collection>>>,
 }
 
 impl Storage {
+    /// Open documents storage
+    ///
+    /// When storage does not exists it will be created automatically.
+    ///
+    /// On opening storage the existing collections and indexes will be restored automatically.
+    ///
     pub fn open<P: AsRef<str>>(path: P) -> Result<Self> {
         let path = path.as_ref();
         let mut bld = EnvBuilder::new().wrap_err()?;
@@ -44,7 +51,11 @@ impl Storage {
         
         Ok(Self { env: env.clone(), collections })
     }
-    
+
+    /// Get collection for documents
+    ///
+    /// *Note*: The collection will be created automatically when does not exists.
+    ///
     pub fn collection<N: AsRef<str>>(&self, name: N) -> Result<Arc<Collection>> {
         let name = name.as_ref();
 

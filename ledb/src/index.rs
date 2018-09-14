@@ -6,10 +6,13 @@ use lmdb::{Environment, put::{NOOVERWRITE, NODUPDATA}, Database, DatabaseOptions
 use super::{Result, ResultWrap, Primary, Document, Value, DatabaseDef, KeyType, KeyData, OrderKind};
 use float::F64;
 
+/// The kind of index
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum IndexKind {
+    /// Index which contains unique keys
     #[serde(rename="uni")]
     Unique,
+    /// Index which may contains duplicates
     #[serde(rename="dup")]
     Duplicate,
 }
@@ -18,8 +21,9 @@ impl Default for IndexKind {
     fn default() -> Self { IndexKind::Duplicate }
 }
 
+/// The definition of index
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct IndexDef (
+pub(crate) struct IndexDef (
     /// Collection name
     pub String,
     /// Field path
@@ -28,7 +32,8 @@ pub struct IndexDef (
     pub KeyType,
 );
 
-pub struct Index {
+/// The index
+pub(crate) struct Index {
     pub(crate) path: String,
     pub(crate) kind: IndexKind,
     pub(crate) key: KeyType,
@@ -36,7 +41,7 @@ pub struct Index {
 }
 
 impl Index {
-    pub fn new(env: Arc<Environment>, def: IndexDef) -> Result<Self> {
+    pub(crate) fn new(env: Arc<Environment>, def: IndexDef) -> Result<Self> {
         let db_name = to_db_name(&DatabaseDef::Index(def.clone())).wrap_err()?;
         
         let IndexDef(_coll, path, kind, key) = def;
@@ -59,7 +64,7 @@ impl Index {
         Ok(Self { path, kind, key, db })
     }
 
-    pub fn update_index(&self, access: &mut WriteAccessor, old_doc: Option<&Document>, new_doc: Option<&Document>) -> Result<()> {
+    pub(crate) fn update_index(&self, access: &mut WriteAccessor, old_doc: Option<&Document>, new_doc: Option<&Document>) -> Result<()> {
         let doc = old_doc.or_else(|| new_doc).ok_or_else(|| "Either old_doc or new_doc or both must present").wrap_err()?;
         let id = doc.req_id()?;
         
@@ -94,7 +99,7 @@ impl Index {
         keys
     }
 
-    pub fn query_set<'a, I: Iterator<Item = &'a KeyData>>(&self, txn: &ReadTransaction, access: &ConstAccessor, keys: I) -> Result<HashSet<Primary>> {
+    pub(crate) fn query_set<'a, I: Iterator<Item = &'a KeyData>>(&self, txn: &ReadTransaction, access: &ConstAccessor, keys: I) -> Result<HashSet<Primary>> {
         let mut out = HashSet::new();
         
         for key in keys {
@@ -135,7 +140,7 @@ impl Index {
         Ok(out)
     }
 
-    pub fn query_range(&self, txn: &ReadTransaction, access: &ConstAccessor, beg: Option<(&KeyData, bool)>, end: Option<(&KeyData, bool)>) -> Result<HashSet<Primary>> {
+    pub(crate) fn query_range(&self, txn: &ReadTransaction, access: &ConstAccessor, beg: Option<(&KeyData, bool)>, end: Option<(&KeyData, bool)>) -> Result<HashSet<Primary>> {
         let mut out = HashSet::new();
 
         let beg = beg.and_then(|(key, inc)| key.into_type(self.key).map(|key| (key, inc)));
@@ -215,7 +220,7 @@ impl Index {
         Ok(out)
     }
 
-    pub fn query_iter(&self, txn: Arc<ReadTransaction<'static>>, order: OrderKind) -> Result<IndexIterator> {
+    pub(crate) fn query_iter(&self, txn: Arc<ReadTransaction<'static>>, order: OrderKind) -> Result<IndexIterator> {
         IndexIterator::new(txn, self.db.clone(), order)
     }
 }
@@ -250,7 +255,7 @@ fn extract_field_primitives(doc: &Value, typ: KeyType, keys: &mut HashSet<KeyDat
     }
 }
 
-pub struct IndexIterator {
+pub(crate) struct IndexIterator {
     txn: Arc<ReadTransaction<'static>>,
     cur: Cursor<'static, 'static>,
     order: OrderKind,

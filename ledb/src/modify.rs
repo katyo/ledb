@@ -9,27 +9,40 @@ use regex::{Regex};
 
 use super::{Value};
 
+/// Modifier action
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Action {
+    /// Set new value to field
     #[serde(rename = "$set")]
     Set(Value),
+    /// Delete field
     #[serde(rename = "$delete")]
     Delete,
+    /// Add some value to field
+    ///
+    /// This also works with string and bytes fields
     #[serde(rename = "$add")]
     Add(Value),
+    /// Multiply field value
     #[serde(rename = "$mul")]
     Mul(Value),
+    /// Toggle boolean field
     #[serde(rename = "$toggle")]
     Toggle,
+    /// Replace string field using regular expression
     #[serde(rename = "$replace")]
     Replace(WrappedRegex, String),
+    /// Prepend elements to array field
     #[serde(rename = "$prepend")]
     Prepend(Vec<Value>),
+    /// Append elements to array field
     #[serde(rename = "$append")]
     Append(Vec<Value>),
+    /// Splice array field
     #[serde(rename = "$splice")]
     #[serde(with = "splice")]
     Splice(i32, u32, Vec<Value>),
+    /// Merge object field
     #[serde(rename = "$merge")]
     Merge(Value),
 }
@@ -67,6 +80,8 @@ impl<'de> Deserialize<'de> for WrappedRegex {
     }
 }
 
+/// Modification operator
+///
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Modify(pub HashMap<String, Vec<Action>>);
 
@@ -104,14 +119,17 @@ impl<'de> Deserialize<'de> for Modify {
 }
 
 impl Modify {
+    /// Create empty modifier
     pub fn new() -> Self {
         Self::default()
     }
-    
+
+    /// Create single modifier
     pub fn single<S: AsRef<str>>(field: S, action: Action) -> Self {
         Modify(once((field.as_ref().into(), vec![action])).collect())
     }
 
+    /// Create modifier using the list of modifications
     pub fn multiple<S: AsRef<str>, M: AsRef<[(S, Action)]>>(mods: M) -> Self {
         let mut ms = Self::default();
 
@@ -122,17 +140,20 @@ impl Modify {
         ms
     }
 
+    /// Append modification to modifier
     pub fn add<S: AsRef<str>>(&mut self, field: S, action: Action) {
         let field = field.as_ref().into();
         let entry = self.0.entry(field).or_default();
         entry.push(action);
     }
 
+    /// Add modification to modifier
     pub fn with<S: AsRef<str>>(mut self, field: S, action: Action) -> Self {
         self.add(field, action);
         self
     }
 
+    /// Apply modifier to generic data
     pub fn apply(&self, val: Value) -> Value {
         modify_value(&self.0, "", val)
     }

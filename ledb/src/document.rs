@@ -6,8 +6,10 @@ use serde_cbor;
 use super::{Result, ResultWrap};
 pub use serde_cbor::{Value, ObjectKey};
 
+/// Primary key (document identifier)
 pub type Primary = u32;
 
+/// Identified document representation
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Document<T = Value> {
     #[serde(rename="$")]
@@ -25,81 +27,111 @@ impl<T> Deref for Document<T> {
 }
 
 impl<T> Document<T> {
+    /// Create document using serializable data
     #[inline]
     pub fn new(data: T) -> Self {
         Self { id: None, data }
     }
 
+    /// Create identified document using serializable data
     #[inline]
     pub fn new_with_id(id: Primary, data: T) -> Self {
         Self { id: Some(id), data }
     }
 
+    /// Get the primary key/identifier of document
     #[inline]
     pub fn get_id(&self) -> &Option<Primary> {
         &self.id
     }
 
+    /// Require the primary key/identifier of document
     #[inline]
     pub fn req_id(&self) -> Result<Primary> {
         self.get_id().ok_or_else(|| "Missing document id").wrap_err()
     }
 
+    /// Get document contents (document data without identifier)
     #[inline]
     pub fn get_data(&self) -> &T {
         &self.data
     }
 
+    /// Checks when document has primary key/identifier
     #[inline]
     pub fn has_id(&self) -> bool {
         self.id != None
     }
 
+    /// Set primary key/identifier to document
     #[inline]
     pub fn set_id(&mut self, id: Primary) {
         self.id = Some(id);
     }
 
+    /// Add primary key/identifier to document
     #[inline]
     pub fn with_id(mut self, id: Primary) -> Self {
         self.set_id(id);
         self
     }
 
+    /// Remove primary key/identifier from document
     #[inline]
     pub fn remove_id(&mut self) {
         self.id = None;
     }
 
+    /// Clear primary key/identifier from document
     #[inline]
     pub fn without_id(mut self) -> Self {
         self.remove_id();
         self
     }
 
+    /// Set document contents
     #[inline]
     pub fn set_data(&mut self, data: T) {
         self.data = data;
     }
 
+    /// Add new contents to document
     #[inline]
     pub fn with_data(mut self, data: T) -> Self {
         self.set_data(data);
         self
     }
 
+    /// Convert document to binary representation
+    ///
+    /// At this moment we use [CBOR](https://cbor.io/) for effectively store documents into DB backend.
+    /// Since the internal representation does not contains primary identifier, it adds on reading documents from DB.
+    ///
     pub fn into_raw(&self) -> Result<Vec<u8>> where T: Serialize {
         serde_cbor::to_vec(&self.data).wrap_err()
     }
 
+    /// Restore document from binary representation
+    ///
+    /// At this moment we use [CBOR](https://cbor.io/) for effectively store documents into DB backend.
+    /// Since the internal representation does not contains primary identifier, it adds on reading documents from DB.
+    ///
     pub fn from_raw(raw: &[u8]) -> Result<Self> where T: DeserializeOwned {
         serde_cbor::from_slice(raw).wrap_err()
     }
-    
+
+    /// Convert typed document to generic representation
+    ///
+    /// Typically the application deals with typed documents which represented by specific structures.
+    /// The database backend processes generic document representation which is CBOR Value.
     pub fn into_gen(&self) -> Result<Document<Value>> where T: Serialize {
         Ok(Document { id: self.id, data: serde_cbor::to_value(&self.data).wrap_err()? })
     }
 
+    /// Restore typed document from generic representation
+    ///
+    /// Typically the application deals with typed documents which represented by specific structures.
+    /// The database backend processes generic document representation which is CBOR Value.
     pub fn from_gen(gen: Document<Value>) -> Result<Document<T>> where T: DeserializeOwned {
         Ok(Document { id: gen.id, data: serde_cbor::from_value(gen.data).wrap_err()? })
     }

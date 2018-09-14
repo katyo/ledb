@@ -7,6 +7,7 @@ use serde_cbor::error::Error as CborError;
 use ron::{ser::Error as RonEncError, de::Error as RonDecError};
 use lmdb::error::Error as DbError;
 
+/// Database error type
 #[derive(Debug)]
 pub enum Error {
     DocError(String),
@@ -18,6 +19,7 @@ pub enum Error {
     SyncError(String),
 }
 
+/// Database result type
 pub type Result<T> = StdResult<T, Error>;
 
 impl From<CborError> for Error {
@@ -76,6 +78,7 @@ impl<'a> From<&'a str> for Error {
     }
 }
 
+/// The helper for converting results with different error types into generic result
 pub trait ResultWrap<T> {
     fn wrap_err(self) -> Result<T>;
 }
@@ -83,53 +86,8 @@ pub trait ResultWrap<T> {
 impl<T, E> ResultWrap<T> for StdResult<T, E>
     where Error: From<E>
 {
+    /// Convert result
     fn wrap_err(self) -> Result<T> {
         self.map_err(Error::from)
     }
 }
-
-/*
-impl<T> ResultWrap for StdResult<T, ron::de::Error> {
-    type Result = Result<T>;
-    fn wrap_err(self) -> Self::Result {
-        self.map_err(|e| Error::DocError(format!("{}", e)))
-    }
-}
-
-impl<T> ResultWrap for StdResult<T, ron::ser::Error> {
-    type Result = Result<T>;
-    fn wrap_err(self) -> Self::Result {
-        self.map_err(|e| Error::DocError(format!("{}", e)))
-    }
-}
-
-impl<T> ResultWrap for StdResult<T, DbError> {
-    type Result = Result<T>;
-    fn wrap_err(self) -> Self::Result {
-        self.map_err(Error::DbError)
-    }
-}
-
-impl<T> ResultWrap for StdResult<T, IoError> {
-    type Result = Result<T>;
-    fn wrap_err(self) -> Self::Result {
-        self.map_err(|e| Error::IoError(e))
-    }
-}
-
-impl<T, E> ResultWrap for StdResult<T, PoisonError<E>>
-    where PoisonError<E>: Display
-{
-    type Result = Result<T>;
-    fn wrap_err(self) -> Self::Result {
-        self.map_err(|e| Error::SyncError(format!("{}", e)))
-    }
-}
-
-impl<T> ResultWrap for StdResult<T, String> {
-    type Result = Result<T>;
-    fn wrap_err(self) -> Self::Result {
-        self.map_err(|e| Error::SyncError(e))
-    }
-}
-*/

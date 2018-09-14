@@ -1,4 +1,4 @@
-use std::fs::{create_dir_all, remove_dir_all};
+use std::fs::{remove_dir_all};
 use super::{Result, Storage};
 
 macro_rules! json_str {
@@ -32,7 +32,6 @@ static DB_DIR: &'static str = ".test_dbs";
 pub fn test_db(id: &'static str) -> Result<Storage> {
     let path = format!("{}/{}", DB_DIR, id);
 
-    let _ = create_dir_all(DB_DIR);
     let _ = remove_dir_all(&path);
 
     Storage::open(&path)

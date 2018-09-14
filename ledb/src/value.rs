@@ -6,6 +6,7 @@ use ordered_float::OrderedFloat;
 
 use super::{Result, ResultWrap, Value};
 
+/// The type of key
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum KeyType {
     #[serde(rename="int")]
@@ -24,6 +25,7 @@ impl Default for KeyType {
     fn default() -> Self { KeyType::Binary }
 }
 
+/// The data of key
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum KeyData {
@@ -49,6 +51,7 @@ mod float {
 }
 
 impl KeyData {
+    /// Converts binary representation into key data
     pub fn from_raw(typ: KeyType, raw: &[u8]) -> Result<Self> {
         use self::KeyData::*;
         Ok(match typ {
@@ -68,7 +71,8 @@ impl KeyData {
             },
         })
     }
-    
+
+    /// Converts key data into binary representation
     pub fn into_raw(&self) -> &[u8] {
         use self::KeyData::*;
         match self {
@@ -80,6 +84,7 @@ impl KeyData {
         }
     }
 
+    /// Converts generic value into key data
     pub fn from_val(val: &Value) -> Option<Self> {
         use serde_cbor::Value::*;
         Some(match val {
@@ -93,6 +98,7 @@ impl KeyData {
         })
     }
 
+    /// Simple data type casting
     pub fn as_type<'a>(&'a self, typ: KeyType) -> Option<&'a KeyData> {
         use self::KeyData::*;
         Some(match (typ, self) {
@@ -105,6 +111,7 @@ impl KeyData {
         })
     }
 
+    /// Convert key data into specified type
     pub fn into_type<'a>(&'a self, typ: KeyType) -> Option<Cow<'a, KeyData>> {
         use self::KeyData::*;
         Some(if let Some(v) = self.as_type(typ) {
@@ -124,6 +131,7 @@ impl KeyData {
         })
     }
 
+    /// Get the actual type of key data
     pub fn get_type(&self) -> KeyType {
         use self::KeyData::*;
         match self {
