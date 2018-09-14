@@ -78,6 +78,11 @@ impl Storage {
         
         Ok(collection)
     }
+
+    pub fn get_collections(&self) -> Result<Vec<String>> {
+        let collections = self.collections.read().wrap_err()?;
+        Ok(collections.iter().map(|collection| collection.name.clone()).collect())
+    }
 }
 
 fn load_databases(env: &Environment, db: &Database) -> Result<Vec<(CollectionDef, Vec<IndexDef>)>> {
