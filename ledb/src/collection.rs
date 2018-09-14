@@ -163,6 +163,46 @@ impl Collection {
         Ok(count)
     }
 
+    #[inline]
+    pub fn dump<T: DeserializeOwned>(&self) -> Result<DocumentsIterator<T>> {
+        self.find(None, Order::default())
+    }
+
+    pub fn load<T: Serialize, I>(&self, docs: I) -> Result<usize>
+        where I: IntoIterator<Item = Document<T>>
+    {
+        self.purge()?;
+
+        let txn = WriteTransaction::new(self.env.clone())?;
+        let f = PutFlags::empty();
+        let mut count = 0;
+
+        {
+            for doc in docs.into_iter() {
+                let id = doc.req_id()?;
+                let doc = doc.into_gen()?;
+                
+                {
+                    let mut access = txn.access();
+                    
+                    access.put(&self.db, &Unaligned::new(id), &doc.into_raw()?, f)
+                          .wrap_err()?;
+                }
+
+                self.update_indexes(&txn, None, Some(&doc))?;
+
+                count += 1;
+            }
+        }
+
+        Ok(count)
+    }
+
+    #[inline]
+    pub fn purge(&self) -> Result<usize> {
+        self.remove(None)
+    }
+
     pub fn has(&self, id: Primary) -> Result<bool> {
         let txn = ReadTransaction::new(self.env.clone()).wrap_err()?;
         let access = txn.access();
