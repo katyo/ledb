@@ -303,6 +303,18 @@ impl Collection {
         let indexes = self.indexes.read().wrap_err()?;
         Ok(indexes.iter().map(|index| (index.path.clone(), index.kind, index.key)).collect())
     }
+
+    pub fn ensure_index<P: AsRef<str>>(&self, path: P, kind: IndexKind, key: KeyType) -> Result<bool> {
+        if let Some(index) = self.get_index(&path)? {
+            if index.kind == kind && index.key == key {
+                return Ok(false);
+            } else {
+                self.remove_index(&path)?;
+            }
+        }
+
+        self.create_index(&path, kind, key)
+    }
     
     pub fn create_index<P: AsRef<str>>(&self, path: P, kind: IndexKind, key: KeyType) -> Result<bool> {
         let path = path.as_ref();
@@ -369,6 +381,13 @@ impl Collection {
         //index.db.delete().wrap_err()?;
 
         Ok(true)
+    }
+
+    pub fn has_index<P: AsRef<str>>(&self, path: P) -> Result<bool> {
+        let path = path.as_ref();
+        let indexes = self.indexes.read().wrap_err()?;
+
+        Ok(indexes.iter().any(|index| index.path == path))
     }
 
     pub(crate) fn get_index<P: AsRef<str>>(&self, path: P) -> Result<Option<Arc<Index>>> {
