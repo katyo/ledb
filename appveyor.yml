@@ -114,6 +114,7 @@ install:
   # Fix undefined references to __acrt_iob_func() per
   # https://github.com/nabijaczleweli/cargo-update/issues/74#issuecomment-376581009
   - sed -rie "s/#define std([[:alpha:]]+)[[:space:]]+\(__acrt_iob_func\(([[:digit:]]+)\)\)/#define std\1 (\&__iob_func()[\2])/" "C:\msys64\mingw64\x86_64-w64-mingw32\include\stdio.h"
+  - sed -rie "s/#define std([[:alpha:]]+)[[:space:]]+\(__acrt_iob_func\(([[:digit:]]+)\)\)/#define std\1 (\&__iob_func()[\2])/" "C:\msys64\mingw32\i686-w64-mingw32\include\stdio.h"
   - rustc -vV
   - cargo -vV
 
