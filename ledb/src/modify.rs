@@ -23,25 +23,25 @@ pub enum Action {
     /// This also works with string and bytes fields
     #[serde(rename = "$add")]
     Add(Value),
-    /// Multiply field value
+    /// Substract some value from field
+    #[serde(rename = "$sub")]
+    Sub(Value),
+    /// Multiply field to value
     #[serde(rename = "$mul")]
     Mul(Value),
+    /// Divide field to value
+    #[serde(rename = "$div")]
+    Div(Value),
     /// Toggle boolean field
     #[serde(rename = "$toggle")]
     Toggle,
     /// Replace string field using regular expression
     #[serde(rename = "$replace")]
     Replace(WrappedRegex, String),
-    /// Prepend elements to array field
-    #[serde(rename = "$prepend")]
-    Prepend(Vec<Value>),
-    /// Append elements to array field
-    #[serde(rename = "$append")]
-    Append(Vec<Value>),
     /// Splice array field
     #[serde(rename = "$splice")]
     #[serde(with = "splice")]
-    Splice(i32, u32, Vec<Value>),
+    Splice(i32, i32, Vec<Value>),
     /// Merge object field
     #[serde(rename = "$merge")]
     Merge(Value),
@@ -185,16 +185,23 @@ fn modify_value(mods: &HashMap<String, Vec<Action>>, pfx: &str, mut val: Value) 
                 for act in acts {
                     use Action::*;
                     match act {
-                        Prepend(elms) => {
-                            vec.splice(0..0, elms.iter().cloned());
+                        Add(Array(elms)) => {
+                            for elm in elms {
+                                if !vec.iter().any(|e| e == elm) {
+                                    vec.push(elm.clone());
+                                }
+                            }
                         },
-                        Append(elms) => {
-                            let end = vec.len();
-                            vec.splice(end..end, elms.iter().cloned());
+                        Sub(Array(elms)) => {
+                            for elm in elms {
+                                if let Some(idx) = vec.iter().position(|e| e == elm) {
+                                    vec.remove(idx);
+                                }
+                            }
                         },
                         Splice(off, del, ins) => {
                             let beg = usize::min(if *off >= 0 { *off as usize } else { vec.len() - (-1 - *off) as usize }, vec.len());
-                            let end = usize::min(beg + *del as usize, vec.len());
+                            let end = usize::min(if *del >= 0 { *del as usize } else { vec.len() - (-1 - *del) as usize }, vec.len());
                             vec.splice(beg .. end, ins.iter().cloned());
                         },
                         _ => (),
@@ -244,6 +251,19 @@ fn modify_primitive(mods: &HashMap<String, Vec<Action>>, pfx: &str, mut val: Val
                 (F64(pre), Add(U64(arg))) => F64(pre + *arg as f64),
                 (F64(pre), Add(I64(arg))) => F64(pre + *arg as f64),
                 (F64(pre), Add(F64(arg))) => F64(pre + arg),
+
+                // substitute
+                (U64(pre), Sub(U64(arg))) => U64(pre - arg),
+                (U64(pre), Sub(I64(arg))) => I64(*pre as i64 - arg),
+                (U64(pre), Sub(F64(arg))) => F64(*pre as f64 - arg),
+                
+                (I64(pre), Sub(U64(arg))) => I64(pre - *arg as i64),
+                (I64(pre), Sub(I64(arg))) => I64(pre - arg),
+                (I64(pre), Sub(F64(arg))) => F64(*pre as f64 - arg),
+                
+                (F64(pre), Sub(U64(arg))) => F64(pre - *arg as f64),
+                (F64(pre), Sub(I64(arg))) => F64(pre - *arg as f64),
+                (F64(pre), Sub(F64(arg))) => F64(pre - arg),
                 
                 // multiply
                 (U64(pre), Mul(U64(arg))) => U64(pre * arg),
@@ -257,6 +277,19 @@ fn modify_primitive(mods: &HashMap<String, Vec<Action>>, pfx: &str, mut val: Val
                 (F64(pre), Mul(U64(arg))) => F64(pre * *arg as f64),
                 (F64(pre), Mul(I64(arg))) => F64(pre * *arg as f64),
                 (F64(pre), Mul(F64(arg))) => F64(pre * arg),
+
+                // divide
+                (U64(pre), Div(U64(arg))) => U64(pre / arg),
+                (U64(pre), Div(I64(arg))) => I64(*pre as i64 / arg),
+                (U64(pre), Div(F64(arg))) => F64(*pre as f64 / arg),
+                
+                (I64(pre), Div(U64(arg))) => I64(pre / *arg as i64),
+                (I64(pre), Div(I64(arg))) => I64(pre / arg),
+                (I64(pre), Div(F64(arg))) => F64(*pre as f64 / arg),
+                
+                (F64(pre), Div(U64(arg))) => F64(pre / *arg as f64),
+                (F64(pre), Div(I64(arg))) => F64(pre / *arg as f64),
+                (F64(pre), Div(F64(arg))) => F64(pre / arg),
 
                 // toggle
                 (Bool(pre), Toggle) => Bool(!pre),
@@ -299,7 +332,7 @@ mod splice {
     use super::{Value};
     use serde::{Serializer, Deserializer, Deserialize, de::{self}, ser::{SerializeSeq}};
     
-    pub fn serialize<S: Serializer>(off: &i32, del: &u32, ins: &Vec<Value>, serializer: S) -> Result<S::Ok, S::Error> {
+    pub fn serialize<S: Serializer>(off: &i32, del: &i32, ins: &Vec<Value>, serializer: S) -> Result<S::Ok, S::Error> {
         let mut map = serializer.serialize_seq(Some(2 + ins.len()))?;
         map.serialize_element(off)?;
         map.serialize_element(del)?;
@@ -309,13 +342,15 @@ mod splice {
         map.end()
     }
     
-    pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<(i32, u32, Vec<Value>), D::Error> {
+    pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<(i32, i32, Vec<Value>), D::Error> {
         let seq: Vec<Value> = Vec::deserialize(deserializer)?;
         let mut it = seq.into_iter();
         use Value::*;
         match (it.next(), it.next()) {
-            (Some(U64(off)), Some(U64(del))) => Ok((off as i32, del as u32, it.collect())),
-            (Some(I64(off)), Some(U64(del))) => Ok((off as i32, del as u32, it.collect())),
+            (Some(U64(off)), Some(U64(del))) => Ok((off as i32, del as i32, it.collect())),
+            (Some(I64(off)), Some(U64(del))) => Ok((off as i32, del as i32, it.collect())),
+            (Some(U64(off)), Some(I64(del))) => Ok((off as i32, del as i32, it.collect())),
+            (Some(I64(off)), Some(I64(del))) => Ok((off as i32, del as i32, it.collect())),
             _ => Err(de::Error::custom("Invalid $slice op"))
         }
     }
@@ -421,8 +456,24 @@ mod test {
     }
 
     #[test]
+    fn array_add() {
+        let m: Modify = json_val!({ "list": { "$add": [2, 3, 4] } });
+
+        assert_eq!(m.apply(json_val!({ "list": [1, 3, 5] })),
+                   json_val!({ "list": [1, 3, 5, 2, 4] }));
+    }
+
+    #[test]
+    fn array_sub() {
+        let m: Modify = json_val!({ "list": { "$sub": [2, 3, 5] } });
+
+        assert_eq!(m.apply(json_val!({ "list": [1, 2, 4, 5] })),
+                   json_val!({ "list": [1, 4] }));
+    }
+
+    #[test]
     fn array_prepend() {
-        let m: Modify = json_val!({ "list": { "$prepend": [1, 2] } });
+        let m: Modify = json_val!({ "list": { "$splice": [0, 0, 1, 2] } });
 
         assert_eq!(m.apply(json_val!({ "list": [3, 4, 5] })),
                    json_val!({ "list": [1, 2, 3, 4, 5] }));
@@ -430,7 +481,7 @@ mod test {
 
     #[test]
     fn array_append() {
-        let m: Modify = json_val!({ "list": { "$append": [1, 2] } });
+        let m: Modify = json_val!({ "list": { "$splice": [-1, -1, 1, 2] } });
 
         assert_eq!(m.apply(json_val!({ "list": [3, 4, 5] })),
                    json_val!({ "list": [3, 4, 5, 1, 2] }));
@@ -438,12 +489,12 @@ mod test {
 
     #[test]
     fn array_splice() {
-        let m: Modify = json_val!({ "list": { "$splice": [1, 2, 0] } });
+        let m: Modify = json_val!({ "list": { "$splice": [1, 3, 0] } });
 
         assert_eq!(m.apply(json_val!({ "list": [1, 2, 3, 4, 5] })),
                    json_val!({ "list": [1, 0, 4, 5] }));
 
-        let m: Modify = json_val!({ "list": { "$splice": [-4, 3, 0, -1] } });
+        let m: Modify = json_val!({ "list": { "$splice": [-4, -1, 0, -1] } });
 
         assert_eq!(m.apply(json_val!({ "list": [1, 2, 3, 4, 5] })),
                    json_val!({ "list": [1, 2, 0, -1] }));

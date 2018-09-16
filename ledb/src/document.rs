@@ -149,6 +149,10 @@ impl Document<Value> {
     }
 }
 
+pub fn to_value<T: Serialize>(value: T) -> Result<Value> {
+    serde_cbor::to_value(value).wrap_err()
+}
+
 #[cfg(test)]
 mod test {
     use super::{Primary, Document};

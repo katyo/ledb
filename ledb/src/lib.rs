@@ -8,7 +8,6 @@ extern crate ron;
 extern crate lmdb_zero as lmdb;
 extern crate regex;
 
-#[cfg(test)]
 #[macro_use]
 extern crate serde_json;
 
@@ -26,15 +25,16 @@ mod modify;
 mod storage;
 mod collection;
 mod index;
+mod macros;
 
 pub use error::{Error, Result, ResultWrap};
-pub use document::{Primary, Document, Value};
+pub use document::{Primary, Document, Value, to_value};
 pub use storage::{Storage};
 pub use collection::{Collection, DocumentsIterator};
 pub use index::{IndexKind};
 pub use value::{KeyType, KeyData};
 pub use filter::{Filter, Comp, Cond, OrderKind, Order};
-pub use modify::{Modify, Action};
+pub use modify::{Modify, Action, WrappedRegex};
 
 use storage::{DatabaseDef};
 use collection::{CollectionDef};
