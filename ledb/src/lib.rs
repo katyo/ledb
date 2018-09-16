@@ -28,7 +28,7 @@ mod index;
 mod macros;
 
 pub use error::{Error, Result, ResultWrap};
-pub use document::{Primary, Document, Value, to_value};
+pub use document::{Identifier, Primary, Document, Value, to_value};
 pub use storage::{Storage};
 pub use collection::{Collection, DocumentsIterator};
 pub use index::{IndexKind};

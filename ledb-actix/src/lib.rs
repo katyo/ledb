@@ -19,7 +19,7 @@ extern crate serde_json;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use serde::{Serialize, de::DeserializeOwned};
-use ledb::{Storage as LeStorage, Result as LeResult};
+use ledb::{Storage as LeStorage, Result as LeResult, Identifier};
 use actix::{Actor, Addr, Message, SyncContext, SyncArbiter, Handler};
 
 pub use ledb::{Filter, Comp, Cond, Order, OrderKind, IndexKind, KeyType, KeyData, Modify, Action, Primary, Document, DocumentsIterator};
@@ -60,11 +60,11 @@ impl Handler<GetCollections> for Storage {
 
 /// Get indexes
 #[allow(non_snake_case)]
-pub fn GetIndexes(coll: &str) -> GetIndexesMsg {
+pub fn GetIndexes<C: Into<Identifier>>(coll: C) -> GetIndexesMsg {
     GetIndexesMsg(coll.into())
 }
 
-pub struct GetIndexesMsg(String);
+pub struct GetIndexesMsg(Identifier);
 
 impl Message for GetIndexesMsg {
     type Result = LeResult<Vec<(String, IndexKind, KeyType)>>;
@@ -80,11 +80,11 @@ impl Handler<GetIndexesMsg> for Storage {
 
 /// Ensure index for collection
 #[allow(non_snake_case)]
-pub fn EnsureIndex(coll: &str, field: &str, kind: IndexKind, key: KeyType) -> EnsureIndexMsg {
+pub fn EnsureIndex<C: Into<Identifier>, F: Into<Identifier>>(coll: C, field: F, kind: IndexKind, key: KeyType) -> EnsureIndexMsg {
     EnsureIndexMsg(coll.into(), field.into(), kind, key)
 }
 
-pub struct EnsureIndexMsg(String, String, IndexKind, KeyType);
+pub struct EnsureIndexMsg(Identifier, Identifier, IndexKind, KeyType);
 
 impl Message for EnsureIndexMsg {
     type Result = LeResult<bool>;
@@ -100,11 +100,11 @@ impl Handler<EnsureIndexMsg> for Storage {
 
 /// Insert new document into collection
 #[allow(non_snake_case)]
-pub fn Insert<T: Serialize>(coll: &str, data: T) -> InsertMsg<T> {
+pub fn Insert<C: Into<Identifier>, T: Serialize>(coll: C, data: T) -> InsertMsg<T> {
     InsertMsg(coll.into(), data)
 }
 
-pub struct InsertMsg<T>(String, T);
+pub struct InsertMsg<T>(Identifier, T);
 
 impl<T: Serialize> Message for InsertMsg<T> {
     type Result = LeResult<Primary>;
@@ -120,11 +120,11 @@ impl<T: Serialize> Handler<InsertMsg<T>> for Storage {
 
 /// Store new version of the previously inserted document
 #[allow(non_snake_case)]
-pub fn Store<T: Serialize>(coll: &str, data: Document<T>) -> StoreMsg<T> {
+pub fn Store<C: Into<Identifier>, T: Serialize>(coll: C, data: Document<T>) -> StoreMsg<T> {
     StoreMsg(coll.into(), data)
 }
 
-pub struct StoreMsg<T>(String, Document<T>);
+pub struct StoreMsg<T>(Identifier, Document<T>);
 
 impl<T: Serialize> Message for StoreMsg<T> {
     type Result = LeResult<()>;
@@ -140,11 +140,11 @@ impl<T: Serialize> Handler<StoreMsg<T>> for Storage {
 
 /// Update documents using filter and modifier
 #[allow(non_snake_case)]
-pub fn Update(coll: &str, filter: Option<Filter>, modify: Modify) -> UpdateMsg {
+pub fn Update<C: Into<Identifier>>(coll: C, filter: Option<Filter>, modify: Modify) -> UpdateMsg {
     UpdateMsg(coll.into(), filter, modify)
 }
 
-pub struct UpdateMsg(String, Option<Filter>, Modify);
+pub struct UpdateMsg(Identifier, Option<Filter>, Modify);
 
 impl Message for UpdateMsg {
     type Result = LeResult<usize>;
@@ -160,11 +160,11 @@ impl Handler<UpdateMsg> for Storage {
 
 /// Remove documents using filter
 #[allow(non_snake_case)]
-pub fn Remove(coll: &str, filter: Option<Filter>) -> RemoveMsg {
+pub fn Remove<C: Into<Identifier>>(coll: C, filter: Option<Filter>) -> RemoveMsg {
     RemoveMsg(coll.into(), filter)
 }
 
-pub struct RemoveMsg(String, Option<Filter>);
+pub struct RemoveMsg(Identifier, Option<Filter>);
 
 impl Message for RemoveMsg {
     type Result = LeResult<usize>;
@@ -180,11 +180,11 @@ impl Handler<RemoveMsg> for Storage {
 
 /// Find documents using filter and ordering
 #[allow(non_snake_case)]
-pub fn Find<T>(coll: &str, filter: Option<Filter>, order: Order) -> FindMsg<T> {
+pub fn Find<C: Into<Identifier>, T>(coll: C, filter: Option<Filter>, order: Order) -> FindMsg<T> {
     FindMsg(coll.into(), filter, order, PhantomData)
 }
 
-pub struct FindMsg<T>(String, Option<Filter>, Order, PhantomData<T>);
+pub struct FindMsg<T>(Identifier, Option<Filter>, Order, PhantomData<T>);
 
 impl<T: DeserializeOwned + 'static> Message for FindMsg<T> {
     type Result = LeResult<DocumentsIterator<T>>;
@@ -236,7 +236,7 @@ mod tests {
             
             spawn(
                 addr.send(
-                    Insert::<BlogPost>("blog", json_val!({
+                    Insert::<_, BlogPost>("blog", json_val!({
                         "title": "Absurd",
                         "tags": ["absurd", "psychology"],
                         "content": "Still nothing..."
@@ -244,7 +244,7 @@ mod tests {
                 ).and_then(move |res| {
                     assert_eq!(res.unwrap(), 1);
                     
-                    addr1.send(Insert::<BlogPost>("blog", json_val!({
+                    addr1.send(Insert::<_, BlogPost>("blog", json_val!({
                         "title": "Lorem ipsum",
                         "tags": ["lorem", "ipsum"],
                         "content": "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum."
@@ -256,7 +256,7 @@ mod tests {
                 }).and_then(move |res| {
                     assert!(res.is_ok());
                     
-                    addr2.send(Find::<BlogPost>("blog",
+                    addr2.send(Find::<_, BlogPost>("blog",
                                     json_val!({ "tags": { "$eq": "psychology" } }),
                                     json_val!("$asc")))
                 }).map(|res| {

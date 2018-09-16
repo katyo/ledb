@@ -7,7 +7,7 @@ use serde::{Serialize, ser::{Serializer, SerializeMap}, Deserialize, de::{Deseri
 use serde_cbor::{ObjectKey};
 use regex::{Regex};
 
-use super::{Value};
+use super::{Identifier, Value};
 
 /// Modifier action
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -83,7 +83,7 @@ impl<'de> Deserialize<'de> for WrappedRegex {
 /// Modification operator
 ///
 #[derive(Debug, Clone, PartialEq, Default)]
-pub struct Modify(pub HashMap<String, Vec<Action>>);
+pub struct Modify(pub HashMap<Identifier, Vec<Action>>);
 
 impl Serialize for Modify {
     fn serialize<S: Serializer>(&self, serializer: S) -> StdResult<S::Ok, S::Error> {
@@ -111,7 +111,7 @@ enum SingleOrMultiple<T> {
 impl<'de> Deserialize<'de> for Modify {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> StdResult<Self, D::Error> {
         let map: HashMap<String, SingleOrMultiple<Action>> = HashMap::deserialize(deserializer)?;
-        Ok(Modify(map.into_iter().map(|(field, actions)| (field, match actions {
+        Ok(Modify(map.into_iter().map(|(field, actions)| (field.into(), match actions {
             SingleOrMultiple::Multiple(v) => v,
             SingleOrMultiple::Single(v) => vec![v],
         })).collect()))
@@ -125,30 +125,19 @@ impl Modify {
     }
 
     /// Create single modifier
-    pub fn single<S: AsRef<str>>(field: S, action: Action) -> Self {
-        Modify(once((field.as_ref().into(), vec![action])).collect())
-    }
-
-    /// Create modifier using the list of modifications
-    pub fn multiple<S: AsRef<str>, M: AsRef<[(S, Action)]>>(mods: M) -> Self {
-        let mut ms = Self::default();
-
-        for (field, action) in mods.as_ref() {
-            ms.add(field, action.clone());
-        }
-        
-        ms
+    pub fn one<I: Into<Identifier>>(field: I, action: Action) -> Self {
+        Modify(once((field.into(), vec![action])).collect())
     }
 
     /// Append modification to modifier
-    pub fn add<S: AsRef<str>>(&mut self, field: S, action: Action) {
-        let field = field.as_ref().into();
+    pub fn add<I: Into<Identifier>>(&mut self, field: I, action: Action) {
+        let field = field.into();
         let entry = self.0.entry(field).or_default();
         entry.push(action);
     }
 
     /// Add modification to modifier
-    pub fn with<S: AsRef<str>>(mut self, field: S, action: Action) -> Self {
+    pub fn with<I: Into<Identifier>>(mut self, field: I, action: Action) -> Self {
         self.add(field, action);
         self
     }
@@ -159,10 +148,10 @@ impl Modify {
     }
 }
 
-fn modify_value(mods: &HashMap<String, Vec<Action>>, pfx: &str, mut val: Value) -> Value {
+fn modify_value(mods: &HashMap<Identifier, Vec<Action>>, pfx: &str, mut val: Value) -> Value {
     use Value::*;
 
-    if let Some(acts) = mods.get(pfx.into()) {
+    if let Some(acts) = mods.get(pfx) {
         for act in acts {
             use Action::*;
             val = match act {
@@ -232,7 +221,7 @@ fn modify_value(mods: &HashMap<String, Vec<Action>>, pfx: &str, mut val: Value) 
     }
 }
 
-fn modify_primitive(mods: &HashMap<String, Vec<Action>>, pfx: &str, mut val: Value) -> Value {
+fn modify_primitive(mods: &HashMap<Identifier, Vec<Action>>, pfx: &str, mut val: Value) -> Value {
     use Value::*;
     
     if let Some(acts) = mods.get(pfx.into()) {
@@ -364,37 +353,37 @@ mod test {
     #[test]
     fn parse_field_set_single() {
         test_parse!(Modify, json!({ "field": { "$set": 0 } }),
-                    Modify::single("field", Action::Set(json_val!(0))));
+                    Modify::one("field", Action::Set(json_val!(0))));
 
         test_parse!(Modify, json!({ "field": { "$set": "abc" } }),
-                    Modify::single("field", Action::Set(json_val!("abc"))));
+                    Modify::one("field", Action::Set(json_val!("abc"))));
 
         test_parse!(Modify, json!({ "field": { "$set": { "a": 99 } } }),
-                    Modify::single("field", Action::Set(json_val!({ "a": 99 }))));
+                    Modify::one("field", Action::Set(json_val!({ "a": 99 }))));
     }
 
     #[test]
-    fn build_field_set_single() {
-        test_build!(Modify::single("field", Action::Set(json_val!(0))),
+    fn build_field_set_one() {
+        test_build!(Modify::one("field", Action::Set(json_val!(0))),
                     json!({ "field": { "$set": 0 } }));
 
-        test_build!(Modify::single("field", Action::Set(json_val!("abc"))),
+        test_build!(Modify::one("field", Action::Set(json_val!("abc"))),
                     json!({ "field": { "$set": "abc" } }));
 
-        test_build!(Modify::single("field", Action::Set(json_val!({ "a": 99 }))),
+        test_build!(Modify::one("field", Action::Set(json_val!({ "a": 99 }))),
                     json!({ "field": { "$set": { "a": 99 } } }));
     }
 
     #[test]
     fn parse_field_set_multi() {
         test_parse!(Modify, json!({ "field": { "$set": 0 }, "string": { "$set": "abc" } }),
-                    Modify::single("field", Action::Set(json_val!(0)))
+                    Modify::one("field", Action::Set(json_val!(0)))
                     .with("string", Action::Set(json_val!("abc"))));
     }
 
     #[test]
     fn build_field_set_multi() {
-        test_build!(Modify::single("field", Action::Set(json_val!(0)))
+        test_build!(Modify::one("field", Action::Set(json_val!(0)))
                     .with("string", Action::Set(json_val!("abc"))),
                     json!({ "field": { "$set": 0 }, "string": { "$set": "abc" } }));
     }

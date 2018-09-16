@@ -1,7 +1,7 @@
 use std::iter::once;
 use lmdb::{ReadTransaction};
 
-use super::{Result, KeyData, Selection, Collection};
+use super::{Identifier, Result, KeyData, Selection, Collection};
 
 /// Comparison operator of filter
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -54,10 +54,18 @@ pub enum Filter {
     Cond(Cond),
     /// Comparison operator
     #[serde(with = "comp")]
-    Comp(String, Comp),
+    Comp(Identifier, Comp),
 }
 
 impl Filter {
+    pub fn cond(cond: Cond) -> Self {
+        Filter::Cond(cond)
+    }
+
+    pub fn comp<F: Into<Identifier>>(field: F, comp: Comp) -> Self {
+        Filter::Comp(field.into(), comp)
+    }
+    
     pub(crate) fn apply(&self, txn: &ReadTransaction<'static>, coll: &Collection) -> Result<Selection> {
         match self {
             Filter::Cond(cond) => {
@@ -126,50 +134,60 @@ pub enum Order {
 
     /// Order by specified indexed field
     #[serde(with = "order")]
-    Field(String, OrderKind),
+    Field(Identifier, OrderKind),
 }
 
 impl Default for Order {
     fn default() -> Self { Order::Primary(OrderKind::default()) }
 }
 
+impl Order {
+    pub fn primary(kind: OrderKind) -> Self {
+        Order::Primary(kind)
+    }
+
+    pub fn field<F: Into<Identifier>>(field: F, kind: OrderKind) -> Self {
+        Order::Field(field.into(), kind)
+    }
+}
+
 mod comp {
-    use super::{Comp};
+    use super::{Identifier, Comp};
     use std::collections::HashMap;
     use serde::{Serializer, Deserializer, Deserialize, de::{self}, ser::{SerializeMap}};
     
-    pub fn serialize<S: Serializer>(field: &String, op: &Comp, serializer: S) -> Result<S::Ok, S::Error> {
+    pub fn serialize<S: Serializer>(field: &Identifier, op: &Comp, serializer: S) -> Result<S::Ok, S::Error> {
         let mut map = serializer.serialize_map(Some(1))?;
         map.serialize_entry(&field, &op)?;
         map.end()
     }
     
-    pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<(String, Comp), D::Error> {
+    pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<(Identifier, Comp), D::Error> {
         let map: HashMap<String, Comp> = HashMap::deserialize(deserializer)?;
         let mut it = map.into_iter();
         match (it.next(), it.next()) {
-            (Some((field, op)), None) => Ok((field, op)),
+            (Some((field, op)), None) => Ok((field.into(), op)),
             _ => Err(de::Error::custom("Not a comp op"))
         }
     }
 }
 
 mod order {
-    use super::{OrderKind};
+    use super::{Identifier, OrderKind};
     use std::collections::HashMap;
     use serde::{Serializer, Deserializer, Deserialize, de::{self}, ser::{SerializeMap}};
     
-    pub fn serialize<S: Serializer>(field: &String, op: &OrderKind, serializer: S) -> Result<S::Ok, S::Error> {
+    pub fn serialize<S: Serializer>(field: &Identifier, op: &OrderKind, serializer: S) -> Result<S::Ok, S::Error> {
         let mut map = serializer.serialize_map(Some(1))?;
         map.serialize_entry(&field, &op)?;
         map.end()
     }
     
-    pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<(String, OrderKind), D::Error> {
+    pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<(Identifier, OrderKind), D::Error> {
         let map: HashMap<String, OrderKind> = HashMap::deserialize(deserializer)?;
         let mut it = map.into_iter();
         match (it.next(), it.next()) {
-            (Some((field, op)), None) => Ok((field, op)),
+            (Some((field, op)), None) => Ok((field.into(), op)),
             _ => Err(de::Error::custom("Not an order kind"))
         }
     }
