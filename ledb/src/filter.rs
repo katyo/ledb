@@ -9,7 +9,7 @@ pub enum Comp {
     /// Equal
     #[serde(rename = "$eq")]
     Eq(KeyData),
-    /// In set (not implemented)
+    /// In set (equal one of)
     #[serde(rename = "$in")]
     In(Vec<KeyData>),
     /// Less than
@@ -27,7 +27,7 @@ pub enum Comp {
     /// Between (in range)
     #[serde(rename = "$bw")]
     Bw(KeyData, bool, KeyData, bool),
-    /// Has (not implemented)
+    /// Field exists (not null)
     #[serde(rename = "$has")]
     Has,
 }
