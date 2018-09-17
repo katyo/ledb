@@ -8,6 +8,7 @@ extern crate ron;
 extern crate lmdb_zero as lmdb;
 extern crate regex;
 
+#[cfg(test)]
 #[macro_use]
 extern crate serde_json;
 
