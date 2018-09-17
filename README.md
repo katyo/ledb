@@ -4,6 +4,18 @@
 [![Travis-CI Build Status](https://travis-ci.org/katyo/ledb.svg?branch=master)](https://travis-ci.org/katyo/ledb)
 [![Appveyor Build status](https://ci.appveyor.com/api/projects/status/1wrmhivii22emfxg)](https://ci.appveyor.com/project/katyo/ledb)
 
-The **LEDB** is an attempt to implement simple, relatively effective, lightweight, embedded document storage.
+The **LEDB** is an attempt to implement simple but efficient, lightweight but powerful document storage.
 
-The abbreviation *LEDB* may be treated as an Lightweight Embedded Database, also Low End Database, also Literium Engine Database, also LitE Database, and so on.
+The abbreviation *LEDB* may be treated as an Lightweight Embedded DB, also Low End DB, also Literium Engine DB, also LitE DB, and so on.
+
+## Documents storage library (`ledb` crate)
+
+This is a basic library which implements document storage and query functionality.
+
+See the [README](ledb/README.md).
+
+## Actor for documents storage (`ledb-actix` crate)
+
+This is an actor which helps interacting with database in applications which builts on the [actix](https://actix.rs/) actor framework.
+
+See the [README](ledb-actix/README.md).
