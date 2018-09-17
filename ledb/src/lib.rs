@@ -12,6 +12,64 @@
 * Storing documents into independent storages so called collections.
 * Using [LMDB](https://en.wikipedia.org/wiki/Lightning_Memory-Mapped_Database) as backend for document storage and indexing engine.
 
+## Usage example
+
+```rust
+extern crate serde;
+#[macro_use] extern crate serde_derive;
+#[macro_use] extern crate serde_json;
+#[macro_use] extern crate ledb;
+
+use ledb::{Storage, IndexKind, KeyType, Filter, Comp, Order, OrderKind};
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+struct MyDoc {
+    title: String,
+    tag: Vec<String>,
+    timestamp: u32,
+}
+
+fn main() {
+    let storage = Storage::open("temp-db").unwrap();
+    
+    let collection = storage.collection("my-docs").unwrap();
+    
+    query!(ensure index for collection
+        title String unique
+        tag String
+        timestamp Int unique
+    ).unwrap();
+    
+    let first_id = query!(insert into collection {
+        "title": "First title",
+        "tag": ["some tag", "other tag"],
+        "timestamp": 1234567890,
+    }).unwrap();
+    
+    let second_id = collection.insert(&MyDoc {
+        title: "Second title".into(),
+        tag: vec![],
+        timestamp: 1234567657,
+    }).unwrap();
+
+    let found_docs = query!(
+        find MyDoc in collection
+        where title == "First title"
+    ).unwrap().collect::<Result<Vec<_>, _>>().unwrap();
+    
+    let n_affected = query!(
+        update collection modify [title = "Other title"]
+        where title == "First title"
+    ).unwrap();
+
+    let found_docs = query!(
+        find MyDoc in collection order ^
+    ).unwrap().collect::<Result<Vec<_>, _>>().unwrap();
+
+    std::fs::remove_dir_all("temp-db").unwrap();
+}
+```
+
 ## Supported key types
 
 | Internal Type | Serde Type | Description                   |
@@ -80,64 +138,6 @@
 | `Add(values)` | `{"$add": [...values]}` | `field += [..values]` | Add unique values to an array as a set    |
 | `Sub(values)` | `{"$sub": [...values]}` | `field -= [..values]` | Remove unique values to an array as a set |
 | `Add(text)`   | `{"$add": "text"}`      | `field += "text"`     | Append text to a string                   |
-
-## Usage example
-
-```rust
-extern crate serde;
-#[macro_use] extern crate serde_derive;
-#[macro_use] extern crate serde_json;
-#[macro_use] extern crate ledb;
-
-use ledb::{Storage, IndexKind, KeyType, Filter, Comp, Order, OrderKind};
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-struct MyDoc {
-    title: String,
-    tag: Vec<String>,
-    timestamp: u32,
-}
-
-fn main() {
-    let storage = Storage::open("temp-db").unwrap();
-    
-    let collection = storage.collection("my-docs").unwrap();
-    
-    query!(ensure index for collection
-        title String unique
-        tag String
-        timestamp Int unique
-    ).unwrap();
-    
-    let first_id = query!(insert into collection {
-        "title": "First title",
-        "tag": ["some tag", "other tag"],
-        "timestamp": 1234567890,
-    }).unwrap();
-    
-    let second_id = collection.insert(&MyDoc {
-        title: "Second title".into(),
-        tag: vec![],
-        timestamp: 1234567657,
-    }).unwrap();
-
-    let found_docs = query!(
-        find MyDoc in collection
-        where title == "First title"
-    ).unwrap().collect::<Result<Vec<_>, _>>().unwrap();
-    
-    let n_affected = query!(
-        update collection modify [title = "Other title"]
-        where title == "First title"
-    ).unwrap();
-
-    let found_docs = query!(
-        find MyDoc in collection order ^
-    ).unwrap().collect::<Result<Vec<_>, _>>().unwrap();
-
-    std::fs::remove_dir_all("temp-db").unwrap();
-}
-```
 
 */
 
