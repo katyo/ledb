@@ -99,7 +99,7 @@ struct MyDoc {
 }
 
 fn main() {
-    let storage = Storage::open("my-db").unwrap();
+    let storage = Storage::open("temp-db").unwrap();
     
     let collection = storage.collection("my-docs").unwrap();
     
@@ -134,6 +134,8 @@ fn main() {
     let found_docs = query!(
         find MyDoc in collection order ^
     ).unwrap().collect::<Result<Vec<_>, _>>().unwrap();
+
+    std::fs::remove_dir_all("temp-db").unwrap();
 }
 ```
 
@@ -372,6 +374,35 @@ mod tests {
     }
 
     #[test]
+    fn find_string_in() {
+        let s = test_db("find_string_in").unwrap();
+        let c = s.collection("test").unwrap();
+
+        mk_index(&c).unwrap();
+        fill_data(&c).unwrap();
+
+        assert_eq!(query!(find Value in c where s in ["abc", "xyz"]).unwrap().size_hint(), (2, Some(2)));
+        assert_found!(query!(find c where [s in ["abc", "xyz"]] order >), 1, 4);
+        assert_found!(query!(find in c where (n.a in ["t1", "t4"]) order by >), 2, 4, 5);
+        assert_eq!(query!(find Value in c where [n.a in ["t2"]] order <).unwrap().size_hint(), (3, Some(3)));
+        assert_found!(query!(find c where (n.a in ["t2"]) order ^), 6, 4, 2);
+    }
+
+    #[test]
+    fn find_int_in() {
+        let s = test_db("find_int_in").unwrap();
+        let c = s.collection("test").unwrap();
+
+        mk_index(&c).unwrap();
+        fill_data(&c).unwrap();
+
+        assert_found!(query!(select from c where i in [1, 5]), 2, 4, 6);
+        assert_found!(query!(select c where i in [2]), 2, 3, 5);
+        assert_found!(query!(find in c where n.i in [1, 3]), 2, 4);
+        assert_found!(query!(find c where [ n.i in [2] ] order <), 5, 3);
+    }
+
+    #[test]
     fn find_int_bw() {
         let s = test_db("find_int_bw").unwrap();
         let c = s.collection("test").unwrap();
@@ -429,6 +460,18 @@ mod tests {
 
         assert_found!(query!(find c where i <= 3), 2, 3, 4, 5, 6);
         assert_found!(query!(find c where [n.i <= 2] order ^), 6, 5, 3, 2);
+    }
+
+    #[test]
+    fn find_has() {
+        let s = test_db("find_has").unwrap();
+        let c = s.collection("test").unwrap();
+
+        mk_index(&c).unwrap();
+        fill_data(&c).unwrap();
+
+        assert_found!(query!(find c where i?), 2, 3, 4, 5, 6);
+        assert_found!(query!(find c where [n.i?] order ^), 6, 5, 4, 3, 2);
     }
 
     #[test]
