@@ -1,6 +1,7 @@
 use std::sync::{Arc, RwLock};
 use std::marker::PhantomData;
 use std::collections::HashSet;
+use std::cmp::Ordering;
 use serde::{Serialize, de::DeserializeOwned};
 use ron::ser::to_string as to_db_name;
 use lmdb::{Environment, put::Flags as PutFlags, Database, DatabaseOptions, ReadTransaction, WriteTransaction, Cursor, CursorIter, MaybeOwned, Unaligned, LmdbResultExt, traits::CreateCursor};
@@ -74,24 +75,37 @@ impl Collection {
     pub fn find<T: DeserializeOwned>(&self, filter: Option<Filter>, order: Order) -> Result<DocumentsIterator<T>> {
         let txn = Arc::new(ReadTransaction::new(self.env.clone())?);
 
-        let all_ids: Box<Iterator<Item = Result<Primary>>> = match order {
-            Order::Primary(order) => Box::new(PrimaryIterator::new(txn.clone(), self.db.clone(), order)?),
-            Order::Field(path, order) => Box::new(self.req_index(path)?.query_iter(txn.clone(), order)?),
+        let ids = match (filter, order) {
+            (None, Order::Primary(order)) =>
+                PrimaryIterator::new(txn.clone(), self.db.clone(), order)?
+                .collect::<Result<Vec<_>>>()?,
+            
+            (None, Order::Field(field, order)) =>
+                self.req_index(field)?
+                    .query_iter(txn.clone(), order)?
+                    .collect::<Result<Vec<_>>>()?,
+            
+            (Some(filter), Order::Primary(order)) => {
+                let sel = filter.apply(&txn, &self)?;
+
+                if sel.inv {
+                    sel.filter(PrimaryIterator::new(txn.clone(), self.db.clone(), order)?)
+                       .collect::<Result<Vec<_>>>()?
+                } else {
+                    let mut ids = sel.ids.into_iter().collect::<Vec<_>>();
+                    ids.sort_unstable_by(if order == OrderKind::Asc { order_primary_asc } else { order_primary_desc });
+                    ids
+                }
+            },
+            
+            (Some(filter), Order::Field(field, order)) =>
+                filter.apply(&txn, &self)?
+                      .filter(self.req_index(field)?
+                              .query_iter(txn.clone(), order)?)
+                      .collect::<Result<Vec<_>>>()?,
         };
         
-        let filtered_ids =
-            if let Some(filter) = filter {
-                let sel = filter.apply(&txn, &self)?;
-                all_ids.filter(move |res| if let Ok(id) = res {
-                    sel.has(&id)
-                } else {
-                    true
-                }).collect::<Result<Vec<_>>>()?
-            } else {
-                all_ids.collect::<Result<Vec<_>>>()?
-            };
-        
-        Ok(DocumentsIterator::new(self.env.clone(), self.db.clone(), filtered_ids)?)
+        DocumentsIterator::new(self.env.clone(), self.db.clone(), ids)
     }
 
     /// Find documents using optional filter and ordering
@@ -543,4 +557,12 @@ impl<T> Iterator for DocumentsIterator<T>
     fn size_hint(&self) -> (usize, Option<usize>) {
         self.ids_iter.size_hint()
     }
+}
+
+fn order_primary_asc(a: &Primary, b: &Primary) -> Ordering {
+    a.cmp(b)
+}
+
+fn order_primary_desc(a: &Primary, b: &Primary) -> Ordering {
+    b.cmp(a)
 }

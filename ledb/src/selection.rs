@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 use std::ops::{Not, BitAnd, BitOr};
 
-use document::Primary;
+use super::{Primary, Result};
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Selection {
@@ -19,6 +19,14 @@ impl Selection {
             false => self.ids.contains(id),
             true => !self.ids.contains(id),
         }
+    }
+
+    pub fn filter<I: Iterator<Item = Result<Primary>>>(self, iter: I) -> impl Iterator<Item = Result<Primary>> {
+        iter.filter(move |res| if let Ok(id) = res {
+            self.has(&id)
+        } else {
+            true
+        })
     }
 }
 
