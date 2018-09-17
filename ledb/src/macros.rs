@@ -3,8 +3,7 @@ macro_rules! tts {
     ($($x:tt)+) => (
         vec![$(stringify!($x)),+]
     );
-}
-*/
+}*/
 
 #[macro_export(local_inner_macros)]
 #[doc(hidden)]
@@ -38,12 +37,20 @@ macro_rules! field_name {
 /// ```
 #[macro_export(local_inner_macros)]
 macro_rules! filter {
-    ($($tokens:tt)+) => ( filter_impl!(@parse_or [] $($tokens)+) );
+    ($($tokens:tt)*) => ( filter_impl!(@parse $($tokens)*) );
 }
 
 #[macro_export(local_inner_macros)]
 #[doc(hidden)]
 macro_rules! filter_impl {
+    (@parse $($tokens:tt)+) => (
+        Some(filter_impl!(@parse_or [] $($tokens)+))
+    );
+
+    (@parse ) => (
+        (None as Option<$crate::Filter>)
+    );
+    
     // start || condition
     (@parse_or [ $($conds:tt)* ] $token:tt $($tokens:tt)*) => (
         filter_impl!(@parse_or_cond [ $($conds)* ] [ $token ] $($tokens)*)
@@ -211,7 +218,7 @@ macro_rules! filter_impl {
 /// ```
 #[macro_export(local_inner_macros)]
 macro_rules! order {
-    ($($tokens:tt)+) => ( order_impl!($($tokens)*) );
+    ($($tokens:tt)*) => ( order_impl!($($tokens)*) );
 }
 
 #[macro_export(local_inner_macros)]
@@ -240,6 +247,12 @@ macro_rules! order_impl {
     );
     ($($field:ident).+ ^) => (
         $crate::Order::field(field_name!($($field).+), $crate::OrderKind::Desc)
+    );
+    ($($field:ident).+) => (
+        $crate::Order::field(field_name!($($field).+), $crate::OrderKind::default())
+    );
+    () => (
+        $crate::Order::default()
     );
 }
 
@@ -285,19 +298,25 @@ macro_rules! order_impl {
 /// modify!(obj ~= extra)
 /// ```
 ///
-/// The negative range value means reverse position in array:
+/// The negative range value means position from end of an array:
 /// * -1 the end of an array
 /// * -2 the last element
 /// * -3 the element before the last
 /// ...and so on.
 #[macro_export(local_inner_macros)]
 macro_rules! modify {
-    ($($tokens:tt)+) => ( modify_impl!(@parse [] $($tokens)+) );
+    ($($tokens:tt)*) => ( modify_impl!(@start $($tokens)*) );
 }
 
 #[macro_export(local_inner_macros)]
 #[doc(hidden)]
 macro_rules! modify_impl {
+    // start paring rule
+    (@start $($tokens:tt)+) => ( modify_impl!(@parse [] $($tokens)*) );
+    
+    // none modifications
+    (@start ) => ( $crate::Modify::default() );
+    
     // parsing
     (@parse [ $($actions:tt)* ] , $($tokens:tt)*) => ( // skip commas at top level
         modify_impl!(@parse [ $($actions)* ] $($tokens)*)
@@ -416,12 +435,232 @@ macro_rules! modify_impl {
     );*/
 }
 
+/// Unified query macro
+///
+/// ```ignore
+/// #[macro_use] extern crate serde_derive;
+/// #[macro_use] extern crate ledb;
+/// use ledb::*;
+///
+/// #[derive(Serialize, Deserialize)]
+/// struct MyDoc {
+///   field: String,
+/// }
+///
+/// fn main() {
+///     let db_handle = Storage::open(".my_db").unwrap();
+///     let my_collection = db_handle.collection("my_collection").unwrap();
+///
+///     // ensure index
+///     assert!(
+///         query!(index my_collection
+///             field Int
+///             other.field Binary
+///             text.subfield String unique
+///         ).is_ok()
+///     );
+///
+///     // find query
+///     assert!(
+///         query!(find my_collection where field == "abc").is_ok()
+///     );
+///
+///     // find query with ascending ordering by field
+///     assert!(
+///         query!(find my_collection where [field == "abc"] order by other.field).is_ok()
+///     );
+///
+///     // find query with result document type with descending ordering by primary key
+///     assert!(
+///         query!(find MyDoc in my_collection where [field == "abc"] order ^).is_ok()
+///     );
+///
+///     // update query
+///     assert!(
+///         query!(update my_collection modify [field = "def"] where [field == "abc"]).is_ok()
+///     );
+///
+///     // remove query
+///     assert!(
+///         query!(delete from my_collection where [field == "def"]).is_ok()
+///     );
+/// }
+/// ```
+#[macro_export(local_inner_macros)]
+macro_rules! query {
+    (index for $($tokens:tt)+) => ( query!(index $($tokens)+) );
+    // ensure index
+    (index $coll:tt $($tokens:tt)+) => ( query_impl!(@index $coll, $($tokens)+) );
+    // ensure index variants
+    (ensure index for $($tokens:tt)+) => ( query!(index $($tokens)+) );
+    (ensure index $($tokens:tt)+) => ( query!(index $($tokens)+) );
 
+    // find with document type
+    (find $type:tt in $coll:tt $($tokens:tt)*) => ( query_impl!(@find $type, $coll, $($tokens)*) );
+    (select $type:tt from $coll:tt $($tokens:tt)*) => ( query_impl!(@find $type, $coll, $($tokens)*) );
+    // find
+    (find in $($tokens:tt)+) => ( query!(find $($tokens)+) ); // in variant
+    (find $coll:tt $($tokens:tt)*) => ( query_impl!(@find _, $coll, $($tokens)*) );
+    // find variants
+    (select from $($tokens:tt)+) => ( query!(find $($tokens)+) );
+    (select $($tokens:tt)+) => ( query!(find $($tokens)+) );
+
+    // insert
+    (insert into $coll:tt $($tokens:tt)+) => ( query!(insert $coll $($tokens)+) );
+    (insert $coll:tt $($tokens:tt)+) => ( query_impl!(@insert $coll, $($tokens)+) );
+
+    // update variants
+    (update $coll:tt set $($tokens:tt)+) => ( query!(update $coll $($tokens)+) );
+    (update $coll:tt change $($tokens:tt)+) => ( query!(update $coll $($tokens)+) );
+    (update $coll:tt modify $($tokens:tt)+) => ( query!(update $coll $($tokens)+) );
+    // update
+    (update $coll:tt $($tokens:tt)+) => ( query_impl!(@update $coll, $($tokens)+) );
+
+    // remove
+    (remove $coll:tt $($tokens:tt)*) => ( query_impl!(@remove $coll, $($tokens)+) );
+    // remove variants
+    (delete from $($tokens:tt)+) => ( query!(remove $($tokens)+) );
+    (delete $($tokens:tt)+) => ( query!(remove $($tokens)+) );
+}
+
+#[macro_export(local_inner_macros)]
+#[doc(hidden)]
+macro_rules! query_impl {
+    // index
+    (@index $coll:expr, $($tokens:tt)+) => (
+        (|| -> $crate::Result<()> {
+            query_impl!(@index_fields $coll, $($tokens)+);
+            Ok(())
+        }())
+    );
+
+    (@index_impl $coll:expr, $($field:ident).+, $kind:ident, $type:ident, $($tokens:tt)*) => (
+        $coll.ensure_index(field_name!($($field).+), $crate::IndexKind::$kind, $crate::KeyType::$type)?;
+        query_impl!(@index_fields $coll, $($tokens)*)
+    );
+    
+    (@index_fields $coll:expr, ) => ();
+    // comma separated unique
+    (@index_fields $coll:expr, $($field:ident).+ $type:ident unique, $($tokens:tt)*) => (
+        query_impl!(@index_impl $coll, $($field).+, Unique, $type, $($tokens)*)
+    );
+    // semicolon separated unique
+    (@index_fields $coll:expr, $($field:ident).+ $type:ident unique; $($tokens:tt)*) => (
+        query_impl!(@index_impl $coll, $($field).+, Unique, $type, $($tokens)*)
+    );
+    // without separator unique
+    (@index_fields $coll:expr, $($field:ident).+ $type:ident unique $($tokens:tt)*) => (
+        query_impl!(@index_impl $coll, $($field).+, Unique, $type, $($tokens)*)
+    );
+    // comma separated
+    (@index_fields $coll:expr, $($field:ident).+ $type:ident, $($tokens:tt)*) => (
+        query_impl!(@index_impl $coll, $($field).+, Duplicate, $type, $($tokens)*)
+    );
+    // semicolon separated
+    (@index_fields $coll:expr, $($field:ident).+ $type:ident; $($tokens:tt)*) => (
+        query_impl!(@index_impl $coll, $($field).+, Duplicate, $type, $($tokens)*)
+    );
+    // without separator
+    (@index_fields $coll:expr, $($field:ident).+ $type:ident $($tokens:tt)*) => (
+        query_impl!(@index_impl $coll, $($field).+, Duplicate, $type, $($tokens)*)
+    );
+    
+    // find
+    (@find $type:ty, $coll:expr,) => (
+        query_impl!(@find_impl $type, $coll, [] [])
+    );
+    (@find $type:ty, $coll:expr, where [ $($filter:tt)+ ] order by $($order:tt)+) => (
+        query_impl!(@find_impl $type, $coll, [ $($filter)+ ] [ $($order)+ ])
+    );
+    (@find $type:ty, $coll:expr, where [ $($filter:tt)+ ] order $($order:tt)+) => (
+        query_impl!(@find_impl $type, $coll, [ $($filter)+ ] [ $($order)+ ])
+    );
+    (@find $type:ty, $coll:expr, where [ $($filter:tt)+ ]) => (
+        query_impl!(@find_impl $type, $coll, [ $($filter)+ ] [])
+    );
+    (@find $type:ty, $coll:expr, where ( $($filter:tt)+ ) order by $($order:tt)+) => (
+        query_impl!(@find_impl $type, $coll, [ $($filter)+ ] [ $($order)+ ])
+    );
+    (@find $type:ty, $coll:expr, where ( $($filter:tt)+ ) order $($order:tt)+) => (
+        query_impl!(@find_impl $type, $coll, [ $($filter)+ ] [ $($order)+ ])
+    );
+    (@find $type:ty, $coll:expr, where ( $($filter:tt)+ )) => (
+        query_impl!(@find_impl $type, $coll, [ $($filter)+ ] [])
+    );
+    (@find $type:ty, $coll:expr, where $($filter:tt)+) => (
+        query_impl!(@find_impl $type, $coll, [ $($filter)+ ] [])
+    );
+    (@find $type:ty, $coll:expr, order by $($order:tt)+) => (
+        query_impl!(@find_impl $type, $coll, [] [ $($order)+ ])
+    );
+    (@find $type:ty, $coll:expr, order $($order:tt)+) => (
+        query_impl!(@find_impl $type, $coll, [] [ $($order)+ ])
+    );
+    (@find_impl $type:ty, $coll:expr, [ $($filter:tt)* ] [ $($order:tt)* ]) => (
+        $coll.find::<$type>(filter!($($filter)*), order!($($order)*))
+    );
+
+    // insert
+    (@insert $coll:expr, { $($json:tt)* }) => ( // json
+        query_impl!(@insert_impl $coll, &json!({ $($json)* }))
+    );
+    (@insert $coll:expr, $($data:tt)+) => ( // json
+        query_impl!(@insert_impl $coll, $($data)+)
+    );
+    (@insert_impl $coll:expr, $doc:expr) => (
+        $coll.insert($doc)
+    );
+
+    // update
+    (@update $coll:expr, [ $($modify:tt)+ ]) => (
+        query_impl!(@update_impl $coll, [] [ $($modify)* ])
+    );
+    (@update $coll:expr, [ $($modify:tt)+ ] where [ $($filter:tt)+ ]) => (
+        query_impl!(@update_impl $coll, [ $($filter)+ ] [ $($modify)+ ])
+    );
+    (@update $coll:expr, [ $($modify:tt)+ ] where $($filter:tt)+) => (
+        query_impl!(@update_impl $coll, [ $($filter)+ ] [ $($modify)+ ])
+    );
+    (@update $coll:expr, { $($modify:tt)+ }) => (
+        query_impl!(@update_impl $coll, [] [ $($modify)* ])
+    );
+    (@update $coll:expr, { $($modify:tt)+ } where [ $($filter:tt)+ ]) => (
+        query_impl!(@update_impl $coll, [ $($filter)+ ] [ $($modify)+ ])
+    );
+    (@update $coll:expr, { $($modify:tt)+ } where $($filter:tt)+) => (
+        query_impl!(@update_impl $coll, [ $($filter)+ ] [ $($modify)+ ])
+    );
+    (@update_impl $coll:expr, [ $($filter:tt)* ] [ $($modify:tt)* ]) => (
+        $coll.update(filter!($($filter)*), modify!($($modify)*))
+    );
+
+    // remove
+    (@remove $coll:expr, ) => (
+        query_impl!(@remove_impl $coll, [])
+    );
+    (@remove $coll:expr, where [ $($filter:tt)+ ]) => (
+        query_impl!(@remove_impl $coll, [ $($filter)+ ])
+    );
+    (@remove $coll:expr, where ( $($filter:tt)+ )) => (
+        query_impl!(@remove_impl $coll, [ $($filter)+ ])
+    );
+    (@remove $coll:expr, where $($filter:tt)+) => (
+        query_impl!(@remove_impl $coll, [ $($filter)+ ])
+    );
+    (@remove_impl $coll:expr, [ $($filter:tt)* ]) => (
+        $coll.remove(filter!($($filter)*))
+    );
+}
 
 #[cfg(test)]
 mod test {
     mod filter {
         use serde_json::from_value;
+
+        #[test]
+        fn empty() {
+            assert_eq!(filter!(), json_val!(null));
+        }
         
         #[test]
         fn comp_eq() {
@@ -554,6 +793,11 @@ mod test {
 
     mod order {
         use serde_json::from_value;
+
+        #[test]
+        fn default() {
+            assert_eq!(order!(), json_val!("$asc"));
+        }
         
         #[test]
         fn primary_asc() {
@@ -582,6 +826,11 @@ mod test {
 
     mod modify {
         use serde_json::from_value;
+
+        #[test]
+        fn empty() {
+            assert_eq!(modify!(), json_val!({}));
+        }
         
         #[test]
         fn set() {

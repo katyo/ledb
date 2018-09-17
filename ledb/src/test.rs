@@ -1,11 +1,13 @@
 use std::fs::{remove_dir_all};
 use super::{Result, Storage};
 
+/*
 macro_rules! json_str {
     ($($json:tt)+) => {
         to_string(&json!($($json)+)).unwrap()
     };
 }
+*/
 
 macro_rules! json_val {
     ($($json:tt)+) => {

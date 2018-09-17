@@ -26,6 +26,8 @@ mod modify;
 mod storage;
 mod collection;
 mod index;
+
+#[macro_use]
 mod macros;
 
 pub use error::{Error, Result, ResultWrap};
@@ -44,9 +46,8 @@ use selection::{Selection};
 
 #[cfg(test)]
 mod tests {
-    use serde_json::from_value;
     use test::test_db;
-    use super::{Value, Collection, Primary, IndexKind, KeyType, Document, Result};
+    use super::{Value, Collection, Primary, Document, Result};
 
     macro_rules! assert_found {
         ($res:expr $(,$exp:expr)*) => {
@@ -81,13 +82,13 @@ mod tests {
     }
 
     fn mk_index(c: &Collection) -> Result<()> {
-        c.create_index("s", IndexKind::Unique, KeyType::String)?;
-        c.create_index("b", IndexKind::Duplicate, KeyType::Bool)?;
-        c.create_index("i", IndexKind::Duplicate, KeyType::Int)?;
-        c.create_index("f", IndexKind::Duplicate, KeyType::Float)?;
-        c.create_index("n.i", IndexKind::Duplicate, KeyType::Int)?;
-        c.create_index("n.a", IndexKind::Duplicate, KeyType::String)?;
-        Ok(())
+        query!(ensure index c
+               s String unique
+               b Bool
+               i Int
+               f Float
+               n.i Int
+               n.a String)
     }
 
     #[test]
@@ -95,9 +96,18 @@ mod tests {
         let s = test_db("insert").unwrap();
         let c = s.collection("test").unwrap();
 
-        assert_eq!(c.insert(&Doc::default()).unwrap(), 1);
-        assert_eq!(c.insert(&Doc::default()).unwrap(), 2);
-        assert_eq!(c.insert(&Doc::default()).unwrap(), 3);
+        assert_eq!(query!(insert into c &Doc::default()).unwrap(), 1);
+        assert_eq!(query!(insert c &Doc::default()).unwrap(), 2);
+        assert_eq!(query!(insert c {
+            "s": "",
+            "b": false,
+            "i": 0,
+            "f": 0.0,
+            "n": {
+                "i": 0,
+                "a": []
+            }
+        }).unwrap(), 3);
     }
 
     #[test]
@@ -120,7 +130,7 @@ mod tests {
         mk_index(&c).unwrap();
         fill_data(&c).unwrap();
 
-        assert_eq!(&c.find_all::<Doc>(json_val!({ "s": { "$eq": "abc" } }), json_val!("$asc")).unwrap().get(0).unwrap().s, "abc");
+        assert_eq!(&query!(select Doc from c where s == "abc").unwrap().next().unwrap().unwrap().s, "abc");
     }
 
     #[test]
@@ -130,8 +140,8 @@ mod tests {
 
         fill_data(&c).unwrap();
         mk_index(&c).unwrap();
-
-        assert_eq!(&c.find_all::<Doc>(json_val!({ "s": { "$eq": "abc" } }), json_val!("$asc")).unwrap().get(0).unwrap().s, "abc");
+        
+        assert_eq!(&query!(select Doc from c where s == "abc").unwrap().next().unwrap().unwrap().s, "abc");
     }
 
     #[test]
@@ -139,10 +149,9 @@ mod tests {
         let s = test_db("duplicate_unique_by_inserting").unwrap();
         let c = s.collection("test").unwrap();
 
-        mk_index(&c).unwrap();
-        fill_data(&c).unwrap();
-
-        assert!(c.insert(&json!({ "s": "abc" })).is_err());
+        assert!(mk_index(&c).is_ok());
+        assert!(fill_data(&c).is_ok());
+        assert!(query!(insert into c { "s": "abc" }).is_err());
     }
 
     #[test]
@@ -150,9 +159,8 @@ mod tests {
         let s = test_db("duplicate_unique_by_indexing").unwrap();
         let c = s.collection("test").unwrap();
 
-        fill_data(&c).unwrap();
-        
-        assert!(c.insert(&json!({ "s": "abc" })).is_ok());
+        assert!(fill_data(&c).is_ok());
+        assert!(query!(insert c { "s": "abc" }).is_ok());
         assert!(mk_index(&c).is_err());
     }
 
@@ -164,8 +172,8 @@ mod tests {
         mk_index(&c).unwrap();
         fill_data(&c).unwrap();
 
-        assert_found!(c.find(json_val!(null), json_val!("$asc")), 1, 2, 3, 4, 5, 6);
-        assert_found!(c.find(json_val!(null), json_val!("$desc")), 6, 5, 4, 3, 2, 1);
+        assert_found!(query!(find in c order >), 1, 2, 3, 4, 5, 6);
+        assert_found!(query!(find c order by <), 6, 5, 4, 3, 2, 1);
     }
 
     #[test]
@@ -176,9 +184,9 @@ mod tests {
         mk_index(&c).unwrap();
         fill_data(&c).unwrap();
 
-        assert_eq!(c.find::<Value>(json_val!(null), json_val!({ "s": "$asc" })).unwrap().size_hint(), (6, Some(6)));
-        assert_found!(c.find(json_val!(null), json_val!({ "s": "$asc" })), 3, 5, 6, 1, 2, 4);
-        assert_found!(c.find(json_val!(null), json_val!({ "s": "$desc" })), 4, 2, 1, 6, 5, 3);
+        assert_eq!(query!(find Value in c order by s >).unwrap().size_hint(), (6, Some(6)));
+        assert_found!(query!(find c order s v), 3, 5, 6, 1, 2, 4);
+        assert_found!(query!(find in c order by s ^), 4, 2, 1, 6, 5, 3);
     }
 
     #[test]
@@ -189,11 +197,11 @@ mod tests {
         mk_index(&c).unwrap();
         fill_data(&c).unwrap();
 
-        assert_eq!(c.find::<Value>(json_val!({ "s": { "$eq": "xyz" } }), json_val!("$asc")).unwrap().size_hint(), (1, Some(1)));
-        assert_found!(c.find(json_val!({ "s": { "$eq": "xyz" } }), json_val!("$asc")), 4);
-        assert_found!(c.find(json_val!({ "n.a": { "$eq": "t1" } }), json_val!("$asc")), 2, 5);
-        assert_eq!(c.find::<Value>(json_val!({ "n.a": { "$eq": "t2" } }), json_val!("$desc")).unwrap().size_hint(), (3, Some(3)));
-        assert_found!(c.find(json_val!({ "n.a": { "$eq": "t2" } }), json_val!("$desc")), 6, 4, 2);
+        assert_eq!(query!(find Value in c where s == "xyz").unwrap().size_hint(), (1, Some(1)));
+        assert_found!(query!(find c where [s == "xyz"] order >), 4);
+        assert_found!(query!(find in c where (n.a == "t1") order by >), 2, 5);
+        assert_eq!(query!(find Value in c where [n.a == "t2"] order <).unwrap().size_hint(), (3, Some(3)));
+        assert_found!(query!(find c where (n.a == "t2") order ^), 6, 4, 2);
     }
 
     #[test]
@@ -204,8 +212,8 @@ mod tests {
         mk_index(&c).unwrap();
         fill_data(&c).unwrap();
 
-        assert_found!(c.find(json_val!({ "b": { "$eq": true } }), json_val!("$asc")), 3, 4, 6);
-        assert_found!(c.find(json_val!({ "b": { "$eq": false } }), json_val!("$asc")), 1, 2, 5);
+        assert_found!(query!(find c where b == true), 3, 4, 6);
+        assert_found!(query!(find c where b == false), 1, 2, 5);
     }
 
     #[test]
@@ -216,10 +224,10 @@ mod tests {
         mk_index(&c).unwrap();
         fill_data(&c).unwrap();
 
-        assert_found!(c.find(json_val!({ "i": { "$eq": 1 } }), json_val!("$asc")), 2, 4);
-        assert_found!(c.find(json_val!({ "i": { "$eq": 2 } }), json_val!("$asc")), 2, 3, 5);
-        assert_found!(c.find(json_val!({ "n.i": { "$eq": 1 } }), json_val!("$asc")), 2);
-        assert_found!(c.find(json_val!({ "n.i": { "$eq": 2 } }), json_val!("$desc")), 5, 3);
+        assert_found!(query!(select from c where i == 1), 2, 4);
+        assert_found!(query!(select c where i == 2), 2, 3, 5);
+        assert_found!(query!(find in c where n.i == 1), 2);
+        assert_found!(query!(find c where [ n.i == 2 ] order <), 5, 3);
     }
 
     #[test]
@@ -230,8 +238,8 @@ mod tests {
         mk_index(&c).unwrap();
         fill_data(&c).unwrap();
 
-        assert_found!(c.find(json_val!({ "i": { "$bw": [2, true, 3, true] } }), json_val!("$asc")), 2, 3, 5, 6);
-        assert_found!(c.find(json_val!({ "n.i": { "$bw": [1, true, 2, true] } }), json_val!("$desc")), 5, 3, 2);
+        assert_found!(query!(find c where i in 2..3), 2, 3, 5, 6);
+        assert_found!(query!(find in c where (n.i in 1..2) order ^), 5, 3, 2);
     }
 
     #[test]
@@ -242,8 +250,8 @@ mod tests {
         mk_index(&c).unwrap();
         fill_data(&c).unwrap();
 
-        assert_found!(c.find(json_val!({ "i": { "$gt": 3 } }), json_val!("$asc")), 3, 4, 6);
-        assert_found!(c.find(json_val!({ "n.i": { "$gt": 1 } }), json_val!("$desc")), 5, 4, 3);
+        assert_found!(query!(find c where i > 3), 3, 4, 6);
+        assert_found!(query!(find c where (n.i > 1) order <), 5, 4, 3);
     }
 
     #[test]
@@ -254,8 +262,8 @@ mod tests {
         mk_index(&c).unwrap();
         fill_data(&c).unwrap();
 
-        assert_found!(c.find(json_val!({ "i": { "$ge": 3 } }), json_val!("$asc")), 3, 4, 6);
-        assert_found!(c.find(json_val!({ "n.i": { "$ge": 1 } }), json_val!("$desc")), 5, 4, 3, 2);
+        assert_found!(query!(find in c where i >= 3), 3, 4, 6);
+        assert_found!(query!(find in c where (n.i >= 1) order ^), 5, 4, 3, 2);
     }
 
     #[test]
@@ -266,8 +274,8 @@ mod tests {
         mk_index(&c).unwrap();
         fill_data(&c).unwrap();
 
-        assert_found!(c.find(json_val!({ "i": { "$lt": 3 } }), json_val!("$asc")), 2, 3, 4, 5);
-        assert_found!(c.find(json_val!({ "n.i": { "$lt": 2 } }), json_val!("$desc")), 6, 2);
+        assert_found!(query!(find c where i < 3), 2, 3, 4, 5);
+        assert_found!(query!(find c where [n.i < 2] order ^), 6, 2);
     }
 
     #[test]
@@ -278,8 +286,8 @@ mod tests {
         mk_index(&c).unwrap();
         fill_data(&c).unwrap();
 
-        assert_found!(c.find(json_val!({ "i": { "$le": 3 } }), json_val!("$asc")), 2, 3, 4, 5, 6);
-        assert_found!(c.find(json_val!({ "n.i": { "$le": 2 } }), json_val!("$desc")), 6, 5, 3, 2);
+        assert_found!(query!(find c where i <= 3), 2, 3, 4, 5, 6);
+        assert_found!(query!(find c where [n.i <= 2] order ^), 6, 5, 3, 2);
     }
 
     #[test]
@@ -290,14 +298,8 @@ mod tests {
         mk_index(&c).unwrap();
         fill_data(&c).unwrap();
 
-        assert_found!(c.find(json_val!({ "$and": [
-            { "b": { "$eq": true } },
-            { "i": { "$eq": 2 } }
-        ] }), json_val!("$asc")), 3);
-        assert_found!(c.find(json_val!({ "$and": [
-            { "n.i": { "$eq": 2 } },
-            { "i": { "$eq": 2 } }
-        ] }), json_val!("$desc")), 5, 3);
+        assert_found!(query!(find in c where b == true && i == 2), 3);
+        assert_found!(query!(find c where (n.i == 2 && i == 2) order <), 5, 3);
     }
 
     #[test]
@@ -308,8 +310,8 @@ mod tests {
         mk_index(&c).unwrap();
         fill_data(&c).unwrap();
 
-        assert_found!(c.find(json_val!({ "$or": [ { "b": { "$eq": true } }, { "i": { "$eq": 2 } } ] }), json_val!("$asc")), 2, 3, 4, 5, 6);
-        assert_found!(c.find(json_val!({ "$or": [ { "n.i": { "$eq": 2 } }, { "i": { "$eq": 2 } } ] }), json_val!("$desc")), 5, 3, 2);
+        assert_found!(query!(find c where b == true || i == 2), 2, 3, 4, 5, 6);
+        assert_found!(query!(find c where [n.i == 2 || i == 2] order by <), 5, 3, 2);
     }
 
     #[test]
@@ -320,10 +322,10 @@ mod tests {
         mk_index(&c).unwrap();
         fill_data(&c).unwrap();
 
-        assert_found!(c.find(json_val!({ "s": { "$eq": "def" } }), json_val!("$asc")), 2);
-        assert_eq!(c.remove(json_val!({ "s": { "$eq": "def" } })).unwrap(), 1);
-        assert_found!(c.find(json_val!({ "s": { "$eq": "def" } }), json_val!("$asc")));
-        assert_found!(c.find(json_val!({ "s": { "$eq": "abc" } }), json_val!("$asc")), 1);
+        assert_found!(query!(find c where s == "def"), 2);
+        assert_eq!(query!(delete from c where s == "def").unwrap(), 1);
+        assert_found!(query!(find c where s == "def"));
+        assert_found!(query!(find c where s == "abc"), 1);
     }
 
     #[test]
@@ -334,10 +336,10 @@ mod tests {
         mk_index(&c).unwrap();
         fill_data(&c).unwrap();
 
-        assert_found!(c.find(json_val!({ "i": { "$ge": 4 } }), json_val!("$asc")), 3, 4, 6);
-        assert_eq!(c.remove(json_val!({ "i": { "$ge": 4 } })).unwrap(), 3);
-        assert_found!(c.find(json_val!({ "i": { "$ge": 4 } }), json_val!("$asc")));
-        assert_found!(c.find(json_val!({ "i": { "$ge": 2 } }), json_val!("$asc")), 2, 5);
+        assert_found!(query!(find in c where i >= 4), 3, 4, 6);
+        assert_eq!(query!(remove c where i >= 4).unwrap(), 3);
+        assert_found!(query!(find c where i >= 4));
+        assert_found!(query!(find c where i >= 2), 2, 5);
     }
 
     #[test]
@@ -348,10 +350,10 @@ mod tests {
         mk_index(&c).unwrap();
         fill_data(&c).unwrap();
 
-        assert_found!(c.find(json_val!({ "s": { "$eq": "def" } }), json_val!("$asc")), 2);
-        assert_eq!(c.update(json_val!({ "s": { "$eq": "def" } }), json_val!({ "s": { "$set": "klm" } })).unwrap(), 1);
-        assert_found!(c.find(json_val!({ "s": { "$eq": "def" } }), json_val!("$asc")));
-        assert_found!(c.find(json_val!({ "s": { "$eq": "abc" } }), json_val!("$asc")), 1);
-        assert_found!(c.find(json_val!({ "s": { "$eq": "klm" } }), json_val!("$asc")), 2);
+        assert_found!(query!(find c where s == "def"), 2);
+        assert_eq!(query!(update c [ s = "klm" ] where s == "def").unwrap(), 1);
+        assert_found!(query!(find c where s == "def"));
+        assert_found!(query!(find c where s == "abc"), 1);
+        assert_found!(query!(find c where s == "klm"), 2);
     }
 }

@@ -11,11 +11,11 @@ use super::{Result, ResultWrap, Value};
 pub enum KeyType {
     #[serde(rename="int")]
     Int,
-    #[serde(rename="flt")]
+    #[serde(rename="float")]
     Float,
-    #[serde(rename="str")]
+    #[serde(rename="string")]
     String,
-    #[serde(rename="raw")]
+    #[serde(rename="binary")]
     Binary,
     #[serde(rename="bool")]
     Bool,
