@@ -1,4 +1,4 @@
-use std::fmt::Display;
+use std::fmt::{self, Display};
 use std::str::Utf8Error;
 use std::io::Error as IoError;
 use std::sync::PoisonError;
@@ -17,6 +17,21 @@ pub enum Error {
     StorageError(String),
     IoError(IoError),
     SyncError(String),
+}
+
+impl Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use Error::*;
+        match self {
+            DocError(s) => write!(f, "Document error: {}", s),
+            DbError(e) => write!(f, "Database error: {}", e),
+            StrError(e) => write!(f, "String error: {}", e),
+            DataError(e) => write!(f, "Data coding error: {}", e),
+            StorageError(s) => write!(f, "Storage error: {}", s),
+            IoError(e) => write!(f, "I/O Error: {}", e),
+            SyncError(s) => write!(f, "Sync error: {}", s),
+        }
+    }
 }
 
 /// Database result type
