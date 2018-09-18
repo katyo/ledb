@@ -18,6 +18,7 @@ extern crate serde_json;
 
 use std::marker::PhantomData;
 use std::sync::Arc;
+use std::path::Path;
 use serde::{Serialize, de::DeserializeOwned};
 use ledb::{Storage as LeStorage, Result as LeResult, Identifier};
 use actix::{Actor, Addr, Message, SyncContext, SyncArbiter, Handler};
@@ -30,7 +31,7 @@ pub struct Storage {
 }
 
 impl Storage {
-    pub fn new<P: AsRef<str>>(path: P) -> LeResult<Self> {
+    pub fn new<P: AsRef<Path>>(path: P) -> LeResult<Self> {
         Ok(Self { db: Arc::new(LeStorage::open(path)?) })
     }
 

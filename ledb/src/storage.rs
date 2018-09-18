@@ -1,3 +1,4 @@
+use std::path::Path;
 use std::fs::create_dir_all;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
@@ -32,13 +33,14 @@ impl Storage {
     ///
     /// On opening storage the existing collections and indexes will be restored automatically.
     ///
-    pub fn open<P: AsRef<str>>(path: P) -> Result<Self> {
+    pub fn open<P: AsRef<Path>>(path: P) -> Result<Self> {
         let path = path.as_ref();
+        let db_path = path.to_str().ok_or("Invalid db path").wrap_err()?;
         let mut bld = EnvBuilder::new().wrap_err()?;
         bld.set_maxdbs(1023).wrap_err()?;
 
         create_dir_all(path).wrap_err()?;
-        let env = Arc::new(unsafe { bld.open(path, OpenFlags::empty(), 0o600) }
+        let env = Arc::new(unsafe { bld.open(db_path, OpenFlags::empty(), 0o600) }
         .wrap_err()?);
 
         let db = Arc::new(Database::open(

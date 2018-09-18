@@ -30,7 +30,10 @@ struct MyDoc {
 }
 
 fn main() {
-    let storage = Storage::open("temp-db").unwrap();
+    let db_path = ".test_dbs/my_temp_db";
+    let _ = std::fs::remove_dir_all(&db_path);
+
+    let storage = Storage::open(&db_path).unwrap();
     
     let collection = storage.collection("my-docs").unwrap();
     
@@ -65,8 +68,6 @@ fn main() {
     let found_docs = query!(
         find MyDoc in collection order ^
     ).unwrap().collect::<Result<Vec<_>, _>>().unwrap();
-
-    std::fs::remove_dir_all("temp-db").unwrap();
 }
 ```
 
