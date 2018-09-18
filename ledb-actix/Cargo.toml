@@ -2,14 +2,34 @@
 name = "ledb-actix"
 version = "0.1.0"
 authors = ["Kayo Phoenix <kayo@illumium.org>"]
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/katyo/ledb"
+documentation = "https://docs.rs/ledb-actix"
+homepage = "https://github.com/katyo/ledb"
+keywords = ["actor", "document storage", "persistence", "json", "cbor", "lmdb", "btree"]
+categories = ["database", "web"]
+description = "LEDB Actor for Actix actor framework and actix-web storage server"
+
+[badges]
+travis-ci = { repository = "katyo/ledb" }
+appveyor = { repository = "katyo/ledb" }
 
 [dependencies]
 serde = "1"
+serde_derive = { version = "1", optional = true }
 ledb = { path = "../ledb" }
+futures = { version = "0.1", optional = true }
 actix = "0.7"
+actix-web = { version = "0.7", optional = true }
 
 [dev-dependencies]
 serde_derive = "1"
 serde_json = "1"
 futures = "0.1"
 tokio = "0.1"
+actix-web = "0.7"
+
+[features]
+default = ["web"]
+web = ["futures", "serde_derive", "actix-web"]
