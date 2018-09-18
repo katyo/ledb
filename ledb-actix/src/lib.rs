@@ -58,6 +58,26 @@ impl Handler<GetCollections> for Storage {
     }
 }
 
+/// Drop collection
+#[allow(non_snake_case)]
+pub fn DropCollection<C: Into<Identifier>>(coll: C) -> DropCollectionMsg {
+    DropCollectionMsg(coll.into())
+}
+
+pub struct DropCollectionMsg(Identifier);
+
+impl Message for DropCollectionMsg {
+    type Result = LeResult<bool>;
+}
+
+impl Handler<DropCollectionMsg> for Storage {
+    type Result = <DropCollectionMsg as Message>::Result;
+
+    fn handle(&mut self, DropCollectionMsg(collection): DropCollectionMsg, _: &mut Self::Context) -> Self::Result {
+        self.db.drop_collection(collection)
+    }
+}
+
 /// Get indexes
 #[allow(non_snake_case)]
 pub fn GetIndexes<C: Into<Identifier>>(coll: C) -> GetIndexesMsg {
@@ -95,6 +115,26 @@ impl Handler<EnsureIndexMsg> for Storage {
 
     fn handle(&mut self, EnsureIndexMsg(collection, field, kind, key): EnsureIndexMsg, _: &mut Self::Context) -> Self::Result {
         self.db.collection(collection)?.ensure_index(field, kind, key)
+    }
+}
+
+/// Drop index of collection
+#[allow(non_snake_case)]
+pub fn DropIndex<C: Into<Identifier>, F: Into<Identifier>>(coll: C, field: F) -> DropIndexMsg {
+    DropIndexMsg(coll.into(), field.into())
+}
+
+pub struct DropIndexMsg(Identifier, Identifier);
+
+impl Message for DropIndexMsg {
+    type Result = LeResult<bool>;
+}
+
+impl Handler<DropIndexMsg> for Storage {
+    type Result = <DropIndexMsg as Message>::Result;
+
+    fn handle(&mut self, DropIndexMsg(collection, field): DropIndexMsg, _: &mut Self::Context) -> Self::Result {
+        self.db.collection(collection)?.drop_index(field)
     }
 }
 

@@ -223,6 +223,22 @@ impl Index {
     pub(crate) fn query_iter(&self, txn: Arc<ReadTransaction<'static>>, order: OrderKind) -> Result<IndexIterator> {
         IndexIterator::new(txn, self.db.clone(), order)
     }
+
+    pub(crate) fn purge(&self, access: &mut WriteAccessor) -> Result<()> {
+        access.clear_db(&self.db).wrap_err()
+    }
+
+    pub(crate) fn to_delete(&self, access: &mut WriteAccessor) -> Result<()> {
+        self.purge(access)
+    }
+
+    pub(crate) fn do_delete(self) -> Result<()> {
+        if let Ok(db) = Arc::try_unwrap(self.db) {
+            db.delete().wrap_err()?;
+        }
+
+        Ok(())
+    }
 }
 
 fn extract_field_values<'a, 'i: 'a, I: Iterator<Item = &'i str> + Clone>(doc: &'a Value, typ: KeyType, path: &'a I, keys: &mut HashSet<KeyData>) {
