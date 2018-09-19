@@ -6,7 +6,7 @@ use serde::{Serialize, de::DeserializeOwned};
 use ron::ser::to_string as to_db_name;
 use lmdb::{Environment, put::Flags as PutFlags, Database, DatabaseOptions, ReadTransaction, WriteTransaction, Cursor, CursorIter, MaybeOwned, Unaligned, LmdbResultExt, traits::CreateCursor};
 
-use super::{Result, ResultWrap, KeyType, Primary, Document, Value, IndexDef, Index, IndexKind, Filter, Order, OrderKind, DatabaseDef, Modify};
+use super::{Result, ResultWrap, KeyType, Identifier, Primary, Document, Value, IndexDef, Index, IndexKind, Filter, Order, OrderKind, DatabaseDef, Modify};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct CollectionDef (
@@ -375,9 +375,19 @@ impl Collection {
     }
 
     /// Get indexes info from the collection
-    pub fn get_indexes(&self) -> Result<Vec<(String, IndexKind, KeyType)>> {
+    pub fn get_indexes(&self) -> Result<Vec<(Identifier, IndexKind, KeyType)>> {
         let indexes = self.indexes.read().wrap_err()?;
-        Ok(indexes.alive.iter().map(|index| (index.path.clone(), index.kind, index.key)).collect())
+        Ok(indexes.alive.iter().map(|index| (Identifier::from(&index.path), index.kind, index.key)).collect())
+    }
+
+    /// Set indexes of collection
+    ///
+    /// This method overrides collection indexes
+    pub fn set_indexes<P: AsRef<str>>(&self, indexes: &[(P, IndexKind, KeyType)]) -> Result<()> {
+        for (path, kind, key) in indexes {
+            self.ensure_index(path.as_ref(), *kind, *key)?;
+        }
+        Ok(())
     }
 
     /// Ensure index for the collection
@@ -391,6 +401,14 @@ impl Collection {
         }
 
         self.create_index(&path, kind, key)
+    }
+
+    /// Checks the index for specified field exists for the collection
+    pub fn has_index<P: AsRef<str>>(&self, path: P) -> Result<bool> {
+        let path = path.as_ref();
+        let indexes = self.indexes.read().wrap_err()?;
+
+        Ok(indexes.alive.iter().any(|index| index.path == path))
     }
 
     /// Create index for the collection
@@ -470,14 +488,6 @@ impl Collection {
         } else {
             false
         })
-    }
-
-    /// Checks the index for specified field exists for the collection
-    pub fn has_index<P: AsRef<str>>(&self, path: P) -> Result<bool> {
-        let path = path.as_ref();
-        let indexes = self.indexes.read().wrap_err()?;
-
-        Ok(indexes.alive.iter().any(|index| index.path == path))
     }
 
     pub(crate) fn get_index<P: AsRef<str>>(&self, path: P) -> Result<Option<Arc<Index>>> {

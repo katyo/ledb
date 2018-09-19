@@ -3,7 +3,7 @@ use std::fs::create_dir_all;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use ron::de::from_str as from_db_name;
-use lmdb::{EnvBuilder, Environment, open::Flags as OpenFlags, Database, DatabaseOptions, ReadTransaction, Cursor, CursorIter, MaybeOwned};
+use lmdb::{self, EnvBuilder, Environment, open::Flags as OpenFlags, Database, DatabaseOptions, ReadTransaction, Cursor, CursorIter, MaybeOwned};
 
 use super::{Result, ResultWrap, CollectionDef, Collection, IndexDef};
 
@@ -18,6 +18,37 @@ pub(crate) enum DatabaseDef {
 struct Collections {
     alive: Vec<Arc<Collection>>,
     dead: Vec<Arc<Collection>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Stats {
+    pub page_size: u32,
+    pub btree_depth: u32,
+    pub branch_pages: usize,
+    pub leaf_pages: usize,
+    pub overflow_pages: usize,
+    pub data_entries: usize,
+}
+
+impl From<lmdb::Stat> for Stats {
+    fn from(lmdb::Stat { psize, depth, branch_pages, leaf_pages, overflow_pages, entries }: lmdb::Stat) -> Self {
+        Self { page_size: psize, btree_depth: depth, branch_pages, leaf_pages, overflow_pages, data_entries: entries }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Info {
+    pub map_size: usize,
+    pub last_page: usize,
+    pub last_transaction: usize,
+    pub max_readers: u32,
+    pub num_readers: u32,
+}
+
+impl From<lmdb::EnvInfo> for Info {
+    fn from(lmdb::EnvInfo { mapsize, last_pgno, last_txnid, maxreaders, numreaders, .. }: lmdb::EnvInfo) -> Self {
+        Self { map_size: mapsize, last_page: last_pgno, last_transaction: last_txnid, max_readers: maxreaders, num_readers: numreaders }
+    }
 }
 
 /// Storage of documents
@@ -58,6 +89,15 @@ impl Storage {
         });
         
         Ok(Self { env: env.clone(), collections })
+    }
+
+    /// Check collection exists
+    ///
+    pub fn has_collection<N: AsRef<str>>(&self, name: N) -> Result<bool> {
+        let name = name.as_ref();
+        let collections = self.collections.read().wrap_err()?;
+        // search alive collection
+        Ok(collections.alive.iter().any(|collection| collection.name == name))
     }
 
     /// Get collection for documents
@@ -120,6 +160,14 @@ impl Storage {
     pub fn get_collections(&self) -> Result<Vec<String>> {
         let collections = self.collections.read().wrap_err()?;
         Ok(collections.alive.iter().map(|collection| collection.name.clone()).collect())
+    }
+
+    pub fn get_stats(&self) -> Result<Stats> {
+        self.env.stat().map(Stats::from).wrap_err()
+    }
+
+    pub fn get_info(&self) -> Result<Info> {
+        self.env.info().map(Info::from).wrap_err()
     }
 }
 

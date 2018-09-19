@@ -2,10 +2,10 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 use std::path::Path;
 use serde::{Serialize, de::DeserializeOwned};
-use ledb::{Storage as LeStorage, Result as LeResult, Identifier};
+use ledb::{Storage as LeStorage, Result as LeResult};
 use actix::{Actor, Addr, Message, SyncContext, SyncArbiter, Handler};
 
-pub use ledb::{Filter, Comp, Cond, Order, OrderKind, IndexKind, KeyType, KeyData, Modify, Action, Primary, Document, DocumentsIterator, Value};
+pub use ledb::{Filter, Comp, Cond, Order, OrderKind, IndexKind, KeyType, KeyData, Modify, Action, Identifier, Primary, Document, DocumentsIterator, Value, Stats, Info};
 
 #[derive(Clone)]
 pub struct Storage {
@@ -26,6 +26,36 @@ impl Actor for Storage {
     type Context = SyncContext<Self>;
 }
 
+/// Get database stats
+pub struct GetStats;
+
+impl Message for GetStats {
+    type Result = LeResult<Stats>;
+}
+
+impl Handler<GetStats> for Storage {
+    type Result = <GetStats as Message>::Result;
+
+    fn handle(&mut self, _: GetStats, _: &mut Self::Context) -> Self::Result {
+        self.db.get_stats()
+    }
+}
+
+/// Get database info
+pub struct GetInfo;
+
+impl Message for GetInfo {
+    type Result = LeResult<Info>;
+}
+
+impl Handler<GetInfo> for Storage {
+    type Result = <GetInfo as Message>::Result;
+
+    fn handle(&mut self, _: GetInfo, _: &mut Self::Context) -> Self::Result {
+        self.db.get_info()
+    }
+}
+
 /// Get collections request
 pub struct GetCollections;
 
@@ -40,6 +70,31 @@ impl Handler<GetCollections> for Storage {
 
     fn handle(&mut self, _: GetCollections, _: &mut Self::Context) -> Self::Result {
         self.db.get_collections()
+    }
+}
+
+/// Ensure collection for collection
+#[allow(non_snake_case)]
+pub fn EnsureCollection<C: Into<Identifier>>(coll: C) -> EnsureCollectionMsg {
+    EnsureCollectionMsg(coll.into())
+}
+
+pub struct EnsureCollectionMsg(Identifier);
+
+impl Message for EnsureCollectionMsg {
+    type Result = LeResult<bool>;
+}
+
+impl Handler<EnsureCollectionMsg> for Storage {
+    type Result = <EnsureCollectionMsg as Message>::Result;
+
+    fn handle(&mut self, EnsureCollectionMsg(name): EnsureCollectionMsg, _: &mut Self::Context) -> Self::Result {
+        Ok(if self.db.has_collection(&name)? {
+            false
+        } else {
+            self.db.collection(name)?;
+            true
+        })
     }
 }
 
@@ -69,7 +124,7 @@ pub fn GetIndexes<C: Into<Identifier>>(coll: C) -> GetIndexesMsg {
     GetIndexesMsg(coll.into())
 }
 
-pub type ListIndexes = Vec<(String, IndexKind, KeyType)>;
+pub type ListIndexes = Vec<(Identifier, IndexKind, KeyType)>;
 
 pub struct GetIndexesMsg(Identifier);
 

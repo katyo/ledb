@@ -71,6 +71,12 @@ impl From<String> for Identifier {
     }
 }
 
+impl<'a> From<&'a String> for Identifier {
+    fn from(s: &String) -> Self {
+        Identifier::Owned(s.clone())
+    }
+}
+
 /// Primary key (document identifier)
 pub type Primary = u32;
 

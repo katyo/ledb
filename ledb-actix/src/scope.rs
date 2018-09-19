@@ -1,46 +1,175 @@
 use std::usize;
-use futures::Future;
-use actix::{Addr};
+use serde_with::json::nested as json_str;
+use futures::{Future, future::{Either, result}};
+use actix::Addr;
 use actix_web::{Scope, State, Path, Query, Json, HttpRequest, HttpResponse, http::Method};
-use actix_web::error::{Error, ErrorInternalServerError, ErrorServiceUnavailable, ErrorNotFound};
+use actix_web::error::{Error, ErrorBadRequest, ErrorInternalServerError, ErrorServiceUnavailable, ErrorNotFound};
 
-use super::{Storage, GetCollections, ListCollections, DropCollection, GetIndexes, ListIndexes, EnsureIndex, DropIndex, Insert, Get, Put, Delete, Update, Remove, Find, IndexKind, KeyType, Filter, Order, Modify, Primary, Document, Value};
+use super::{Storage, GetStats, Stats, GetInfo, Info, GetCollections, ListCollections, EnsureCollection, DropCollection, GetIndexes, EnsureIndex, DropIndex, Insert, Get, Put, Delete, Update, Remove, Find, IndexKind, KeyType, Filter, Order, Modify, Primary, Document, Value};
 
 pub type StorageAddr = Addr<Storage>;
 
 pub fn storage(scope: Scope<StorageAddr>) -> Scope<StorageAddr> {
     scope
         .resource("", |res| {
-            res.get().with_async(get_collections);
+            res.get().with(get_usage)
         })
-        .nested("/{collection}", |scope| {
+        .resource("/info", |res| {
+            res.name("info");
+            res.get().with_async(get_info);
+        })
+        .resource("/stats", |res| {
+            res.name("stats");
+            res.get().with_async(get_stats);
+        })
+        .nested("/collection", |scope| {
             scope
                 .resource("", |res| {
-                    res.name("collection");
-                    res.post().with_async(insert_document);
-                    res.get().with_async(find_documents);
-                    res.method(Method::PATCH).with_async(update_documents);
-                    res.put().with_async(remove_documents);
-                    res.delete().with_async(drop_collection);
+                    res.name("collections");
+                    res.get().with_async(get_collections);
+                    res.post().with_async(ensure_collection);
                 })
-                .nested("/index", |scope| {
+                .nested("/{collection}", |scope| {
                     scope
                         .resource("", |res| {
-                            res.get().with_async(get_indexes);
+                            res.name("collection");
+                            res.delete().with_async(drop_collection);
+                            // shortcuts for document methods
+                            res.post().with_async(insert_document);
+                            res.get().with_async(find_documents);
+                            res.method(Method::PATCH).with_async(update_documents);
+                            res.put().with_async(remove_documents);
                         })
-                        .resource("/{index}", |res| {
-                            res.name("index");
-                            res.put().with_async(ensure_index);
-                            res.delete().with_async(drop_index);
+                        .nested("/index", |scope| {
+                            scope
+                                .resource("", |res| {
+                                    res.name("indexes");
+                                    res.get().with_async(get_indexes);
+                                    res.post().with_async(ensure_index);
+                                })
+                                .resource("/{index}", |res| {
+                                    res.name("index");
+                                    res.delete().with_async(drop_index);
+                                })
                         })
-                })
-                .resource("/{primary}", |res| {
-                    res.name("document");
-                    res.get().with_async(get_document);
-                    res.put().with_async(put_document);
-                    res.delete().with_async(delete_document);
+                        .nested("/document", |scope| {
+                            scope
+                                .resource("", |res| {
+                                    res.name("documents");
+                                    res.post().with_async(insert_document);
+                                    res.get().with_async(find_documents);
+                                    res.put().with_async(update_documents);
+                                    res.delete().with_async(remove_documents);
+                                })
+                                .resource("/{id}", |res| {
+                                    res.name("document");
+                                    res.get().with_async(get_document);
+                                    res.put().with_async(put_document);
+                                    res.delete().with_async(delete_document);
+                                })
+                        })
+                        .resource("/{id}", |res| {
+                            res.name("document_short");
+                            res.get().with_async(get_document);
+                            res.put().with_async(put_document);
+                            res.delete().with_async(delete_document);
+                        })
                 })
         })
+}
+
+pub fn get_usage(req: HttpRequest<StorageAddr>) -> String {
+    format!(r#"LEDB HTTP interface {version}
+
+Storage API:
+
+    # get database info
+    GET {info}
+    # get database statistics
+    GET {stats}
+
+Collection API:
+
+    # get list of collections
+    GET {collections}
+    # create new empty collection
+    POST {collections}?name=$collection_name
+    # drop collection with all documents
+    DELETE {collection}
+
+Index API:
+
+    # get indexes of collection
+    GET {indexes}
+    # create new index for collection
+    POST {indexes}?name=$field_path&kind=$index_kind&type=$key_type
+    # drop index of collection
+    DELETE {index}
+
+Document API:
+
+    # find documents using query
+    GET {documents}?filter=$query&order=$ordering&offset=10&length=10
+    GET {collection}?filter=$query&order=$ordering&offset=10&length=10
+    # modify documents using query
+    PUT {documents}?filter=$query&modify=$modifications
+    PATCH {collection}?filter=$query&modify=$modifications
+    # remove documents using query
+    DELETE {documents}?filter=$query
+    PUT {collection}?filter=$query
+
+    # insert new document
+    POST {documents}
+    POST {collection}
+    # get document by id
+    GET {document}
+    GET {document_short}
+    # replace document
+    PUT {document}
+    PUT {document_short}
+    # remove document
+    DELETE {document}
+    DELETE {document_short}
+
+Supported index kinds:
+
+    uni -- Unique key
+    dup -- Duplicated keys
+
+Supported key types:
+
+    int    -- 64-bit signed integer
+    float  -- 64-bit floating point number
+    bool   -- boolean value
+    string -- UTF-8 string
+    binary -- binary data
+
+See documentation: {documentation}
+"#,
+            version = env!("CARGO_PKG_VERSION"),
+            documentation = env!("CARGO_PKG_HOMEPAGE"),
+            info = req.url_for_static("info").unwrap(),
+            stats = req.url_for_static("stats").unwrap(),
+            collections = req.url_for_static("collections").unwrap(),
+            collection = req.url_for("collection", &["$collection_name"]).unwrap(),
+            indexes = req.url_for("indexes", &["$collection_name"]).unwrap(),
+            index = req.url_for("document", &["$collection_name", "$index_name"]).unwrap(),
+            documents = req.url_for("documents", &["$collection_name"]).unwrap(),
+            document = req.url_for("document", &["$collection_name", "$document_id"]).unwrap(),
+            document_short = req.url_for("document_short", &["$collection_name", "$document_id"]).unwrap(),
+    )
+}
+
+pub fn get_info(addr: State<StorageAddr>) -> impl Future<Item = Json<Info>, Error = Error> {
+    addr.send(GetInfo)
+        .map_err(ErrorServiceUnavailable)
+        .and_then(|res| res.map(Json).map_err(ErrorInternalServerError))
+}
+
+pub fn get_stats(addr: State<StorageAddr>) -> impl Future<Item = Json<Stats>, Error = Error> {
+    addr.send(GetStats)
+        .map_err(ErrorServiceUnavailable)
+        .and_then(|res| res.map(Json).map_err(ErrorInternalServerError))
 }
 
 pub fn get_collections(addr: State<StorageAddr>) -> impl Future<Item = Json<ListCollections>, Error = Error> {
@@ -49,43 +178,85 @@ pub fn get_collections(addr: State<StorageAddr>) -> impl Future<Item = Json<List
         .and_then(|res| res.map(Json).map_err(ErrorInternalServerError))
 }
 
-pub fn drop_collection((addr, coll): (State<StorageAddr>, Path<&'static str>)) -> impl Future<Item = Json<bool>, Error = Error> {
-    addr.send(DropCollection(*coll))
-        .map_err(ErrorServiceUnavailable)
-        .and_then(|res| res.map(Json).map_err(ErrorInternalServerError))
+#[derive(Serialize, Deserialize)]
+pub struct CollectionParams {
+    name: String,
 }
 
-pub fn get_indexes((addr, coll): (State<StorageAddr>, Path<&'static str>)) -> impl Future<Item = Json<ListIndexes>, Error = Error> {
-    addr.send(GetIndexes(*coll))
+pub fn ensure_collection((addr, params, req): (State<StorageAddr>, Query<CollectionParams>, HttpRequest<StorageAddr>)) -> impl Future<Item = HttpResponse, Error = Error> {
+    let CollectionParams { name } = params.into_inner();
+    if let Ok(url) = req.url_for("collection", &[&name]) {
+        Either::A(addr.send(EnsureCollection(name))
+                  .map_err(ErrorServiceUnavailable)
+                  .and_then(|res| res.map_err(ErrorInternalServerError))
+                  .map(move |res| if res { HttpResponse::Created() } else { HttpResponse::Ok() }
+                       .header("location", url.as_str())
+                       .finish()))
+    } else {
+        Either::B(result(Err(ErrorBadRequest("Invalid collection name"))))
+    }
+}
+
+pub fn drop_collection((addr, coll): (State<StorageAddr>, Path<String>)) -> impl Future<Item = HttpResponse, Error = Error> {
+    addr.send(DropCollection(coll.into_inner()))
         .map_err(ErrorServiceUnavailable)
-        .and_then(|res| res.map(Json).map_err(ErrorInternalServerError))
+        .and_then(|res| res.map_err(ErrorInternalServerError))
+        .and_then(|res| if res {
+            Ok(HttpResponse::NoContent().finish())
+        } else {
+            Err(ErrorNotFound("Collection not found"))
+        })
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct IndexOpts {
+pub struct IndexParams {
+    pub name: String,
     #[serde(default)]
-    kind: IndexKind,
+    pub kind: IndexKind,
     #[serde(rename = "type")]
-    key: KeyType,
+    pub key: KeyType,
 }
 
-pub fn ensure_index((addr, coll, idx, opts): (State<StorageAddr>, Path<&'static str>, Path<&'static str>, Json<IndexOpts>)) -> impl Future<Item = Json<bool>, Error = Error> {
-    addr.send(EnsureIndex(*coll, *idx, opts.kind, opts.key))
-        .map_err(ErrorServiceUnavailable)
-        .and_then(|res| res.map(Json).map_err(ErrorInternalServerError))
-}
-
-pub fn drop_index((addr, coll, idx): (State<StorageAddr>, Path<&'static str>, Path<&'static str>)) -> impl Future<Item = Json<bool>, Error = Error> {
-    addr.send(DropIndex(*coll, *idx))
-        .map_err(ErrorServiceUnavailable)
-        .and_then(|res| res.map(Json).map_err(ErrorInternalServerError))
-}
-
-pub fn insert_document((addr, coll, doc, req): (State<StorageAddr>, Path<&'static str>, Json<Value>, HttpRequest<StorageAddr>)) -> impl Future<Item = HttpResponse, Error = Error> {
-    addr.send(Insert(*coll, doc.into_inner()))
+pub fn get_indexes((addr, coll): (State<StorageAddr>, Path<String>)) -> impl Future<Item = Json<Vec<IndexParams>>, Error = Error> {
+    addr.send(GetIndexes(coll.into_inner()))
         .map_err(ErrorServiceUnavailable)
         .and_then(|res| res.map_err(ErrorInternalServerError))
-        .and_then(move |id| req.url_for("document", &[*coll, &id.to_string()])
+        .map(|indexes| Json(indexes.into_iter()
+             .map(|(name, kind, key)| IndexParams { name: String::from(name.as_ref()), kind, key })
+             .collect()))
+}
+
+pub fn ensure_index((addr, coll, params, req): (State<StorageAddr>, Path<String>, Query<IndexParams>, HttpRequest<StorageAddr>)) -> impl Future<Item = HttpResponse, Error = Error> {
+    let IndexParams { name, kind, key } = params.into_inner();
+    if let Ok(url) = req.url_for("index", &[&coll, &name]) {
+        Either::A(addr.send(EnsureIndex(coll.into_inner(), name, kind, key))
+                  .map_err(ErrorServiceUnavailable)
+                  .and_then(|res| res.map_err(ErrorInternalServerError))
+                  .map(move |res| if res { HttpResponse::Created() } else { HttpResponse::Ok() }
+                       .header("location", url.as_str())
+                       .finish()))
+    } else {
+        Either::B(result(Err(ErrorBadRequest("Invalid index name"))))
+    }
+}
+
+pub fn drop_index((addr, path): (State<StorageAddr>, Path<(String, String)>)) -> impl Future<Item = HttpResponse, Error = Error> {
+    let (coll, idx) = path.into_inner();
+    addr.send(DropIndex(coll, idx))
+        .map_err(ErrorServiceUnavailable)
+        .and_then(|res| res.map_err(ErrorInternalServerError))
+        .and_then(|res| if res {
+            Ok(HttpResponse::NoContent().finish())
+        } else {
+            Err(ErrorNotFound("Index not found"))
+        })
+}
+
+pub fn insert_document((addr, coll, doc, req): (State<StorageAddr>, Path<String>, Json<Value>, HttpRequest<StorageAddr>)) -> impl Future<Item = HttpResponse, Error = Error> {
+    addr.send(Insert(&*coll, doc.into_inner()))
+        .map_err(ErrorServiceUnavailable)
+        .and_then(|res| res.map_err(ErrorInternalServerError))
+        .and_then(move |id| req.url_for("document", &[&coll.into_inner(), &id.to_string()])
                   .map_err(ErrorInternalServerError))
         .map(|url| HttpResponse::Created()
              .header("location", url.as_str())
@@ -95,8 +266,10 @@ pub fn insert_document((addr, coll, doc, req): (State<StorageAddr>, Path<&'stati
 #[derive(Serialize, Deserialize)]
 pub struct FindParams {
     #[serde(default)]
+    #[serde(with = "json_str")]
     filter: Option<Filter>,
     #[serde(default)]
+    #[serde(with = "json_str")]
     order: Order,
     #[serde(default)]
     offset: Option<usize>,
@@ -104,9 +277,9 @@ pub struct FindParams {
     length: Option<usize>,
 }
 
-pub fn find_documents((addr, coll, query): (State<StorageAddr>, Path<&'static str>, Query<FindParams>)) -> impl Future<Item = Json<Vec<Document<Value>>>, Error = Error> {
+pub fn find_documents((addr, coll, query): (State<StorageAddr>, Path<String>, Query<FindParams>)) -> impl Future<Item = Json<Vec<Document<Value>>>, Error = Error> {
     let FindParams { filter, order, offset, length } = query.into_inner();
-    addr.send(Find::<_, Value>(*coll, filter, order))
+    addr.send(Find::<_, Value>(coll.into_inner(), filter, order))
         .map_err(ErrorServiceUnavailable)
         .and_then(|res| res.map_err(ErrorInternalServerError))
         .and_then(move |docs| docs
@@ -121,13 +294,14 @@ pub fn find_documents((addr, coll, query): (State<StorageAddr>, Path<&'static st
 #[derive(Serialize, Deserialize)]
 pub struct UpdateParams {
     #[serde(default)]
+    #[serde(with = "json_str")]
     filter: Option<Filter>,
     modify: Modify,
 }
 
-pub fn update_documents((addr, coll, query): (State<StorageAddr>, Path<&'static str>, Query<UpdateParams>)) -> impl Future<Item = HttpResponse, Error = Error> {
+pub fn update_documents((addr, coll, query): (State<StorageAddr>, Path<String>, Query<UpdateParams>)) -> impl Future<Item = HttpResponse, Error = Error> {
     let UpdateParams { filter, modify } = query.into_inner();
-    addr.send(Update(*coll, filter, modify))
+    addr.send(Update(coll.into_inner(), filter, modify))
         .map_err(ErrorServiceUnavailable)
         .and_then(|res| res.map_err(ErrorInternalServerError))
         .map(|affected_docs| HttpResponse::NoContent()
@@ -138,12 +312,13 @@ pub fn update_documents((addr, coll, query): (State<StorageAddr>, Path<&'static 
 #[derive(Serialize, Deserialize)]
 pub struct RemoveParams {
     #[serde(default)]
+    #[serde(with = "json_str")]
     filter: Option<Filter>,
 }
 
-pub fn remove_documents((addr, coll, query): (State<StorageAddr>, Path<&'static str>, Query<RemoveParams>)) -> impl Future<Item = HttpResponse, Error = Error> {
+pub fn remove_documents((addr, coll, query): (State<StorageAddr>, Path<String>, Query<RemoveParams>)) -> impl Future<Item = HttpResponse, Error = Error> {
     let RemoveParams { filter } = query.into_inner();
-    addr.send(Remove(*coll, filter))
+    addr.send(Remove(coll.into_inner(), filter))
         .map_err(ErrorServiceUnavailable)
         .and_then(|res| res.map_err(ErrorInternalServerError))
         .map(|affected_docs| HttpResponse::NoContent()
@@ -151,23 +326,26 @@ pub fn remove_documents((addr, coll, query): (State<StorageAddr>, Path<&'static 
              .finish())
 }
 
-pub fn get_document((addr, coll, id): (State<StorageAddr>, Path<&'static str>, Path<Primary>)) -> impl Future<Item = Json<Document<Value>>, Error = Error> {
-    addr.send(Get(*coll, *id))
+pub fn get_document((addr, path): (State<StorageAddr>, Path<(String, Primary)>)) -> impl Future<Item = Json<Document<Value>>, Error = Error> {
+    let (coll, id) = path.into_inner();
+    addr.send(Get(coll, id))
         .map_err(ErrorServiceUnavailable)
         .and_then(|res| res.map_err(ErrorInternalServerError))
         .and_then(|res| res.map(Json)
                   .ok_or_else(|| ErrorNotFound("Document not found")))
 }
 
-pub fn put_document((addr, coll, id, data): (State<StorageAddr>, Path<&'static str>, Path<Primary>, Json<Value>)) -> impl Future<Item = HttpResponse, Error = Error> {
-    addr.send(Put(*coll, Document::new(data.into_inner()).with_id(*id)))
+pub fn put_document((addr, path, data): (State<StorageAddr>, Path<(String, Primary)>, Json<Value>)) -> impl Future<Item = HttpResponse, Error = Error> {
+    let (coll, id) = path.into_inner();
+    addr.send(Put(coll, Document::new(data.into_inner()).with_id(id)))
         .map_err(ErrorServiceUnavailable)
         .and_then(|res| res.map_err(ErrorInternalServerError))
         .map(|_| HttpResponse::NoContent().finish())
 }
 
-pub fn delete_document((addr, coll, id): (State<StorageAddr>, Path<&'static str>, Path<Primary>)) -> impl Future<Item = HttpResponse, Error = Error> {
-    addr.send(Delete(*coll, *id))
+pub fn delete_document((addr, path): (State<StorageAddr>, Path<(String, Primary)>)) -> impl Future<Item = HttpResponse, Error = Error> {
+    let (coll, id) = path.into_inner();
+    addr.send(Delete(coll, id))
         .map_err(ErrorServiceUnavailable)
         .and_then(|res| res.map_err(ErrorInternalServerError))
         .and_then(|res| if res {

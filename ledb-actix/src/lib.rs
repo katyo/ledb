@@ -17,6 +17,9 @@ extern crate serde_derive;
 extern crate serde_json;
 
 #[cfg(feature = "web")]
+extern crate serde_with;
+
+#[cfg(feature = "web")]
 extern crate actix_web;
 
 mod actor;
