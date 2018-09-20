@@ -5,7 +5,7 @@ macro_rules! tts {
     );
 }*/
 
-#[macro_export(local_inner_macros)]
+#[macro_export]
 #[doc(hidden)]
 macro_rules! field_name {
     ($($part:tt)+) => (
@@ -35,12 +35,12 @@ macro_rules! field_name {
 /// // or filter conditions
 /// filter!(field <= 123 || field > 456)
 /// ```
-#[macro_export(local_inner_macros)]
+#[macro_export]
 macro_rules! filter {
     ($($tokens:tt)*) => ( filter_impl!(@parse $($tokens)*) );
 }
 
-#[macro_export(local_inner_macros)]
+#[macro_export]
 #[doc(hidden)]
 macro_rules! filter_impl {
     (@parse $($tokens:tt)+) => (
@@ -216,12 +216,12 @@ macro_rules! filter_impl {
 /// order!(other.field <)
 /// order!(other.field ^)
 /// ```
-#[macro_export(local_inner_macros)]
+#[macro_export]
 macro_rules! order {
     ($($tokens:tt)*) => ( order_impl!($($tokens)*) );
 }
 
-#[macro_export(local_inner_macros)]
+#[macro_export]
 #[doc(hidden)]
 macro_rules! order_impl {
     (>) => (
@@ -303,12 +303,12 @@ macro_rules! order_impl {
 /// * -2 the last element
 /// * -3 the element before the last
 /// ...and so on.
-#[macro_export(local_inner_macros)]
+#[macro_export]
 macro_rules! modify {
     ($($tokens:tt)*) => ( modify_impl!(@start $($tokens)*) );
 }
 
-#[macro_export(local_inner_macros)]
+#[macro_export]
 #[doc(hidden)]
 macro_rules! modify_impl {
     // start paring rule
@@ -486,7 +486,7 @@ macro_rules! modify_impl {
 ///     );
 /// }
 /// ```
-#[macro_export(local_inner_macros)]
+#[macro_export]
 macro_rules! query {
     (index for $($tokens:tt)+) => ( query!(index $($tokens)+) );
     // ensure index
@@ -523,7 +523,7 @@ macro_rules! query {
     (delete $($tokens:tt)+) => ( query!(remove $($tokens)+) );
 }
 
-#[macro_export(local_inner_macros)]
+#[macro_export]
 #[doc(hidden)]
 macro_rules! query_impl {
     // index
