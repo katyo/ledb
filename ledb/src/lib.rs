@@ -163,6 +163,7 @@ mod test;
 
 mod collection;
 mod document;
+mod enumerate;
 mod error;
 mod filter;
 mod float;
@@ -186,6 +187,7 @@ pub use storage::{Info, Stats, Storage};
 pub use value::{KeyData, KeyType};
 
 use collection::CollectionDef;
+use enumerate::{Serial, SerialGenerator};
 use index::{Index, IndexDef};
 use selection::Selection;
 use storage::DatabaseDef;

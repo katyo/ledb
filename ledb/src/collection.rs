@@ -11,30 +11,33 @@ use std::sync::{Arc, RwLock};
 
 use super::{
     DatabaseDef, Document, Filter, Identifier, Index, IndexDef, IndexKind, KeyType, Modify, Order,
-    OrderKind, Primary, Result, ResultWrap, Value, WrappedDatabase,
+    OrderKind, Primary, Result, ResultWrap, Serial, SerialGenerator, Value, WrappedDatabase,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct CollectionDef(
+    /// Unique serial
+    pub Serial,
     /// Collection name
     pub String,
 );
 
 impl CollectionDef {
     pub fn new<S: AsRef<str>>(name: S) -> Self {
-        CollectionDef(name.as_ref().into())
+        CollectionDef(0, name.as_ref().into())
     }
-}
 
-struct Indexes {
-    alive: Vec<Arc<Index>>,
-    dead: Vec<Arc<Index>>,
+    pub fn with_serial(mut self, gen: &SerialGenerator) -> Self {
+        self.0 = gen.gen();
+        self
+    }
 }
 
 /// Collection of documents
 pub struct Collection {
     pub(crate) name: String,
-    indexes: RwLock<Indexes>,
+    gen: Arc<SerialGenerator>,
+    indexes: RwLock<Vec<Arc<Index>>>,
     env: Arc<Environment>,
     db: WrappedDatabase,
 }
@@ -42,28 +45,29 @@ pub struct Collection {
 impl Collection {
     pub(crate) fn new(
         env: Arc<Environment>,
+        gen: Arc<SerialGenerator>,
         def: CollectionDef,
         index_defs: Vec<IndexDef>,
     ) -> Result<Self> {
         let db_name = to_db_name(&DatabaseDef::Collection(def.clone())).wrap_err()?;
 
-        let CollectionDef(name) = def;
+        let CollectionDef(_serial, name) = def;
 
         let db_opts = DatabaseOptions::create_map::<Unaligned<Primary>>();
 
         let db =
             WrappedDatabase::new(Database::open(env.clone(), Some(&db_name), &db_opts).wrap_err()?);
 
-        let indexes = RwLock::new(Indexes {
-            alive: index_defs
+        let indexes = RwLock::new(
+            index_defs
                 .into_iter()
                 .map(|def| Index::new(env.clone(), def).map(Arc::new))
                 .collect::<Result<Vec<_>>>()?,
-            dead: Vec::new(),
-        });
+        );
 
         Ok(Self {
             name,
+            gen,
             indexes,
             env,
             db,
@@ -300,7 +304,7 @@ impl Collection {
         let mut access = txn.access();
 
         let indexes = self.indexes.read().wrap_err()?;
-        for index in indexes.alive.iter() {
+        for index in indexes.iter() {
             index.purge(&mut access)?;
         }
 
@@ -415,7 +419,7 @@ impl Collection {
             let indexes = self.indexes.read().wrap_err()?;
             let mut access = txn.access();
 
-            for index in indexes.alive.iter() {
+            for index in indexes.iter() {
                 index.update_index(&mut access, old_doc, new_doc)?;
             }
         }
@@ -445,7 +449,6 @@ impl Collection {
     pub fn get_indexes(&self) -> Result<Vec<(Identifier, IndexKind, KeyType)>> {
         let indexes = self.indexes.read().wrap_err()?;
         Ok(indexes
-            .alive
             .iter()
             .map(|index| (Identifier::from(&index.path), index.kind, index.key))
             .collect())
@@ -484,7 +487,7 @@ impl Collection {
         let path = path.as_ref();
         let indexes = self.indexes.read().wrap_err()?;
 
-        Ok(indexes.alive.iter().any(|index| index.path == path))
+        Ok(indexes.iter().any(|index| index.path == path))
     }
 
     /// Create index for the collection
@@ -496,41 +499,22 @@ impl Collection {
     ) -> Result<bool> {
         let path = path.as_ref();
 
-        let dead_pos = {
+        {
             let indexes = self.indexes.read().wrap_err()?;
             // search alive index
-            if let Some(_) = indexes.alive.iter().find(|index| index.path == path) {
+            if let Some(_) = indexes.iter().find(|index| index.path == path) {
                 return Ok(false);
             }
-            // search dead index
-            indexes
-                .dead
-                .iter()
-                .position(|index| index.path == path && index.kind == kind && index.key == key)
-        };
-
-        // try to restore dead index
-        if let Some(pos) = dead_pos {
-            // restore dead collection
-            let mut indexes = self.indexes.write().wrap_err()?;
-            let index = indexes.dead.remove(pos);
-            index.un_delete();
-            indexes.alive.push(index);
-            return Ok(true);
         }
 
         // create new index
         let index = Index::new(
             self.env.clone(),
-            IndexDef(self.name.clone(), path.into(), kind, key),
+            IndexDef::new(self.name.clone(), path, kind, key).with_serial(&self.gen),
         ).map(Arc::new)?;
 
         {
-            let mut indexes = self.indexes.write().wrap_err()?;
-            indexes.alive.push(index.clone());
-        }
-
-        {
+            // fulfill index
             let txn = WriteTransaction::new(self.env.clone()).wrap_err()?;
             {
                 let mut access = txn.access();
@@ -555,6 +539,10 @@ impl Collection {
             txn.commit().wrap_err()?;
         }
 
+        // add index to collection indexes
+        let mut indexes = self.indexes.write().wrap_err()?;
+        indexes.push(index);
+
         Ok(true)
     }
 
@@ -564,16 +552,15 @@ impl Collection {
 
         let found_pos = {
             let indexes = self.indexes.read().wrap_err()?;
-            indexes.alive.iter().position(|index| index.path == path)
+            indexes.iter().position(|index| index.path == path)
         };
 
         Ok(if let Some(pos) = found_pos {
             let mut indexes = self.indexes.write().wrap_err()?;
-            let index = indexes.alive.remove(pos);
+            let index = indexes.remove(pos);
             let txn = WriteTransaction::new(self.env.clone())?;
             let mut access = txn.access();
             index.to_delete(&mut access)?;
-            indexes.dead.push(index);
             true
         } else {
             false
@@ -585,7 +572,6 @@ impl Collection {
         let indexes = self.indexes.read().wrap_err()?;
 
         Ok(indexes
-            .alive
             .iter()
             .find(|index| index.path == path)
             .map(Clone::clone))
@@ -604,24 +590,13 @@ impl Collection {
         let mut access = txn.access();
 
         let indexes = self.indexes.read().wrap_err()?;
-        for index in indexes.alive.iter() {
+        for index in indexes.iter() {
             index.purge(&mut access)?;
             index.to_delete(&mut access)?;
         }
 
         self.db.delete_on_drop(true);
         access.clear_db(&self.db).wrap_err()
-    }
-
-    pub(crate) fn un_delete(&self) -> Result<()> {
-        self.db.delete_on_drop(false);
-
-        let indexes = self.indexes.read().wrap_err()?;
-        for index in indexes.alive.iter() {
-            index.un_delete();
-        }
-
-        Ok(())
     }
 }
 

@@ -8,7 +8,7 @@ use std::fs::create_dir_all;
 use std::path::Path;
 use std::sync::{Arc, RwLock};
 
-use super::{Collection, CollectionDef, IndexDef, Result, ResultWrap};
+use super::{Collection, CollectionDef, IndexDef, Result, ResultWrap, Serial, SerialGenerator};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) enum DatabaseDef {
@@ -16,11 +16,6 @@ pub(crate) enum DatabaseDef {
     Collection(CollectionDef),
     #[serde(rename = "i")]
     Index(IndexDef),
-}
-
-struct Collections {
-    alive: Vec<Arc<Collection>>,
-    dead: Vec<Arc<Collection>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -88,7 +83,8 @@ impl From<lmdb::EnvInfo> for Info {
 /// Storage of documents
 pub struct Storage {
     env: Arc<Environment>,
-    collections: RwLock<Collections>,
+    gen: Arc<SerialGenerator>,
+    collections: RwLock<Vec<Arc<Collection>>>,
 }
 
 impl Storage {
@@ -110,18 +106,22 @@ impl Storage {
         let db =
             Arc::new(Database::open(env.clone(), None, &DatabaseOptions::defaults()).wrap_err()?);
 
-        let collections = RwLock::new(Collections {
-            alive: load_databases(&env, &db)?
+        let (last_serial, db_def) = load_databases(&env, &db)?;
+
+        let gen = Arc::new(SerialGenerator::new(last_serial));
+
+        let collections = RwLock::new(
+            db_def
                 .into_iter()
                 .map(|(def, index_defs)| {
-                    Collection::new(env.clone(), def, index_defs).map(Arc::new)
+                    Collection::new(env.clone(), gen.clone(), def, index_defs).map(Arc::new)
                 })
                 .collect::<Result<Vec<_>>>()?,
-            dead: Vec::new(),
-        });
+        );
 
         Ok(Self {
             env: env.clone(),
+            gen,
             collections,
         })
     }
@@ -132,10 +132,7 @@ impl Storage {
         let name = name.as_ref();
         let collections = self.collections.read().wrap_err()?;
         // search alive collection
-        Ok(collections
-            .alive
-            .iter()
-            .any(|collection| collection.name == name))
+        Ok(collections.iter().any(|collection| collection.name == name))
     }
 
     /// Get collection for documents
@@ -145,39 +142,27 @@ impl Storage {
     pub fn collection<N: AsRef<str>>(&self, name: N) -> Result<Arc<Collection>> {
         let name = name.as_ref();
 
-        let dead_pos = {
+        {
             let collections = self.collections.read().wrap_err()?;
             // search alive collection
             if let Some(collection) = collections
-                .alive
                 .iter()
                 .find(|collection| collection.name == name)
             {
                 return Ok(collection.clone());
             }
-            // search dead collection
-            collections
-                .dead
-                .iter()
-                .position(|collection| collection.name == name)
-        };
-
-        // try to restore dead collection
-        if let Some(pos) = dead_pos {
-            // restore dead collection
-            let mut collections = self.collections.write().wrap_err()?;
-            let collection = collections.dead.remove(pos);
-            collection.un_delete()?;
-            collections.alive.push(collection.clone());
-            return Ok(collection);
         }
 
         // create new collection
-        let collection =
-            Collection::new(self.env.clone(), CollectionDef::new(name), Vec::new()).map(Arc::new)?;
+        let collection = Collection::new(
+            self.env.clone(),
+            self.gen.clone(),
+            CollectionDef::new(name).with_serial(&self.gen),
+            Vec::new(),
+        ).map(Arc::new)?;
 
         let mut collections = self.collections.write().wrap_err()?;
-        collections.alive.push(collection.clone());
+        collections.push(collection.clone());
 
         Ok(collection)
     }
@@ -188,16 +173,14 @@ impl Storage {
         let found_pos = {
             let collections = self.collections.read().wrap_err()?;
             collections
-                .alive
                 .iter()
                 .position(|collection| collection.name == name)
         };
 
         Ok(if let Some(pos) = found_pos {
             let mut collections = self.collections.write().wrap_err()?;
-            let collection = collections.alive.remove(pos);
+            let collection = collections.remove(pos);
             collection.to_delete()?;
-            collections.dead.push(collection);
             true
         } else {
             false
@@ -207,7 +190,6 @@ impl Storage {
     pub fn get_collections(&self) -> Result<Vec<String>> {
         let collections = self.collections.read().wrap_err()?;
         Ok(collections
-            .alive
             .iter()
             .map(|collection| collection.name.clone())
             .collect())
@@ -222,11 +204,15 @@ impl Storage {
     }
 }
 
-fn load_databases(env: &Environment, db: &Database) -> Result<Vec<(CollectionDef, Vec<IndexDef>)>> {
+fn load_databases(
+    env: &Environment,
+    db: &Database,
+) -> Result<(Serial, Vec<(CollectionDef, Vec<IndexDef>)>)> {
     let txn = ReadTransaction::new(env).wrap_err()?;
     let cursor = txn.cursor(db.clone()).wrap_err()?;
     let access = txn.access();
     let mut defs: HashMap<String, (CollectionDef, Vec<IndexDef>)> = HashMap::new();
+    let mut last_serial: Serial = 0;
 
     for res in CursorIter::new(
         MaybeOwned::Owned(cursor),
@@ -240,17 +226,25 @@ fn load_databases(env: &Environment, db: &Database) -> Result<Vec<(CollectionDef
         }) {
         match res {
             Ok(DatabaseDef::Collection(def)) => {
-                defs.entry(def.0.clone())
-                    .or_insert_with(|| (def, Vec::new()));
+                last_serial = usize::max(last_serial, def.0);
+                let entry = defs
+                    .entry(def.1.clone())
+                    .or_insert_with(|| (def.clone(), Vec::new()));
+                entry.0 = def;
             }
-            Ok(DatabaseDef::Index(def)) => defs
-                .entry(def.0.clone())
-                .or_insert_with(|| (CollectionDef::new(&def.0), Vec::new()))
-                .1
-                .push(def),
+            Ok(DatabaseDef::Index(def)) => {
+                last_serial = usize::max(last_serial, def.0);
+                defs.entry(def.1.clone())
+                    .or_insert_with(|| (CollectionDef::new(&def.1), Vec::new()))
+                    .1
+                    .push(def);
+            }
             Err(e) => return Err(e),
         }
     }
 
-    Ok(defs.into_iter().map(|(_key, val)| val).collect())
+    Ok((
+        last_serial,
+        defs.into_iter().map(|(_key, val)| val).collect(),
+    ))
 }

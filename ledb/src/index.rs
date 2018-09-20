@@ -9,8 +9,8 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use super::{
-    DatabaseDef, Document, KeyData, KeyType, OrderKind, Primary, Result, ResultWrap, Value,
-    WrappedDatabase,
+    DatabaseDef, Document, KeyData, KeyType, OrderKind, Primary, Result, ResultWrap, Serial,
+    SerialGenerator, Value, WrappedDatabase,
 };
 use float::F64;
 
@@ -34,6 +34,8 @@ impl Default for IndexKind {
 /// The definition of index
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct IndexDef(
+    /// Unique serial
+    pub Serial,
     /// Collection name
     pub String,
     /// Field path
@@ -41,6 +43,22 @@ pub(crate) struct IndexDef(
     pub IndexKind,
     pub KeyType,
 );
+
+impl IndexDef {
+    pub fn new<C: Into<String>, P: Into<String>>(
+        coll: C,
+        path: P,
+        kind: IndexKind,
+        key: KeyType,
+    ) -> Self {
+        IndexDef(0, coll.into(), path.into(), kind, key)
+    }
+
+    pub fn with_serial(mut self, gen: &SerialGenerator) -> Self {
+        self.0 = gen.gen();
+        self
+    }
+}
 
 /// The index
 pub(crate) struct Index {
@@ -54,7 +72,7 @@ impl Index {
     pub(crate) fn new(env: Arc<Environment>, def: IndexDef) -> Result<Self> {
         let db_name = to_db_name(&DatabaseDef::Index(def.clone())).wrap_err()?;
 
-        let IndexDef(_coll, path, kind, key) = def;
+        let IndexDef(_serial, _coll, path, kind, key) = def;
 
         let db_opts = match (kind, key) {
             (IndexKind::Unique, KeyType::Int) => DatabaseOptions::create_map::<Unaligned<i64>>(),
@@ -314,10 +332,6 @@ impl Index {
         self.purge(access)?;
         self.db.delete_on_drop(true);
         Ok(())
-    }
-
-    pub(crate) fn un_delete(&self) {
-        self.db.delete_on_drop(false);
     }
 }
 
