@@ -147,10 +147,11 @@ extern crate ordered_float;
 extern crate serde;
 #[macro_use]
 extern crate serde_derive;
-extern crate serde_cbor;
-extern crate ron;
 extern crate lmdb_zero as lmdb;
 extern crate regex;
+extern crate ron;
+extern crate serde_cbor;
+extern crate supercow;
 
 #[cfg(test)]
 #[macro_use]
@@ -160,38 +161,40 @@ extern crate serde_json;
 #[macro_use]
 mod test;
 
-mod error;
-mod float;
-mod value;
-mod document;
-mod selection;
-mod filter;
-mod modify;
-mod storage;
 mod collection;
+mod document;
+mod error;
+mod filter;
+mod float;
 mod index;
+mod modify;
+mod selection;
+mod storage;
+mod value;
+mod wrapped_database;
 
 #[macro_use]
 mod macros;
 
-pub use error::{Error, Result, ResultWrap};
-pub use document::{Identifier, Primary, Document, Value, to_value};
-pub use storage::{Storage, Stats, Info};
 pub use collection::{Collection, DocumentsIterator};
-pub use index::{IndexKind};
-pub use value::{KeyType, KeyData};
-pub use filter::{Filter, Comp, Cond, OrderKind, Order};
-pub use modify::{Modify, Action, WrappedRegex};
+pub use document::{to_value, Document, Identifier, Primary, Value};
+pub use error::{Error, Result, ResultWrap};
+pub use filter::{Comp, Cond, Filter, Order, OrderKind};
+pub use index::IndexKind;
+pub use modify::{Action, Modify, WrappedRegex};
+pub use storage::{Info, Stats, Storage};
+pub use value::{KeyData, KeyType};
 
-use storage::{DatabaseDef};
-use collection::{CollectionDef};
+use collection::CollectionDef;
 use index::{Index, IndexDef};
-use selection::{Selection};
+use selection::Selection;
+use storage::DatabaseDef;
+use wrapped_database::WrappedDatabase;
 
 #[cfg(test)]
 mod tests {
+    use super::{Collection, Document, Primary, Result, Value};
     use test::test_db;
-    use super::{Value, Collection, Primary, Document, Result};
 
     macro_rules! assert_found {
         ($res:expr $(,$exp:expr)*) => {
@@ -199,7 +202,7 @@ mod tests {
             assert_eq!($res.unwrap().map(|doc: Result<Document<Value>>| doc.unwrap().req_id().unwrap()).collect::<Vec<_>>(), ids)
         }
     }
-    
+
     #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
     pub struct Doc {
         pub s: String,
@@ -214,12 +217,16 @@ mod tests {
         pub i: i64,
         pub a: Vec<String>,
     }
-    
+
     fn fill_data(c: &Collection) -> Result<()> {
         c.insert(&json!({ "s": "abc", "b": false, "i": [] }))?;
-        c.insert(&json!({ "s": "def", "b": false, "i": [1, 2], "n": { "i": 1, "a": ["t1", "t2"] } }))?;
+        c.insert(
+            &json!({ "s": "def", "b": false, "i": [1, 2], "n": { "i": 1, "a": ["t1", "t2"] } }),
+        )?;
         c.insert(&json!({ "s": "123", "b": true, "i": [2, 3, 4], "n": { "i": 2, "a": [] } }))?;
-        c.insert(&json!({ "s": "xyz", "b": true, "i": [1, 5, 4], "n": { "i": 3, "a": ["t2", "t4"] } }))?;
+        c.insert(
+            &json!({ "s": "xyz", "b": true, "i": [1, 5, 4], "n": { "i": 3, "a": ["t2", "t4"] } }),
+        )?;
         c.insert(&json!({ "s": "321", "b": false, "i": [2], "n": { "i": 2, "a": ["t4", "t1"] } }))?;
         c.insert(&json!({ "s": "456", "b": true, "i": [3, 5], "n": { "i": -11, "a": ["t2"] } }))?;
         Ok(())
@@ -242,7 +249,8 @@ mod tests {
 
         assert_eq!(query!(insert into c &Doc::default()).unwrap(), 1);
         assert_eq!(query!(insert c &Doc::default()).unwrap(), 2);
-        assert_eq!(query!(insert c {
+        assert_eq!(
+            query!(insert c {
             "s": "",
             "b": false,
             "i": 0,
@@ -251,7 +259,9 @@ mod tests {
                 "i": 0,
                 "a": []
             }
-        }).unwrap(), 3);
+        }).unwrap(),
+            3
+        );
     }
 
     #[test]
@@ -274,7 +284,15 @@ mod tests {
         mk_index(&c).unwrap();
         fill_data(&c).unwrap();
 
-        assert_eq!(&query!(select Doc from c where s == "abc").unwrap().next().unwrap().unwrap().s, "abc");
+        assert_eq!(
+            &query!(select Doc from c where s == "abc")
+                .unwrap()
+                .next()
+                .unwrap()
+                .unwrap()
+                .s,
+            "abc"
+        );
     }
 
     #[test]
@@ -284,8 +302,16 @@ mod tests {
 
         fill_data(&c).unwrap();
         mk_index(&c).unwrap();
-        
-        assert_eq!(&query!(select Doc from c where s == "abc").unwrap().next().unwrap().unwrap().s, "abc");
+
+        assert_eq!(
+            &query!(select Doc from c where s == "abc")
+                .unwrap()
+                .next()
+                .unwrap()
+                .unwrap()
+                .s,
+            "abc"
+        );
     }
 
     #[test]
@@ -328,7 +354,10 @@ mod tests {
         mk_index(&c).unwrap();
         fill_data(&c).unwrap();
 
-        assert_eq!(query!(find Value in c order by s >).unwrap().size_hint(), (6, Some(6)));
+        assert_eq!(
+            query!(find Value in c order by s >).unwrap().size_hint(),
+            (6, Some(6))
+        );
         assert_found!(query!(find c order s v), 3, 5, 6, 1, 2, 4);
         assert_found!(query!(find in c order by s ^), 4, 2, 1, 6, 5, 3);
     }
@@ -341,10 +370,20 @@ mod tests {
         mk_index(&c).unwrap();
         fill_data(&c).unwrap();
 
-        assert_eq!(query!(find Value in c where s == "xyz").unwrap().size_hint(), (1, Some(1)));
+        assert_eq!(
+            query!(find Value in c where s == "xyz")
+                .unwrap()
+                .size_hint(),
+            (1, Some(1))
+        );
         assert_found!(query!(find c where [s == "xyz"] order >), 4);
         assert_found!(query!(find in c where (n.a == "t1") order by >), 2, 5);
-        assert_eq!(query!(find Value in c where [n.a == "t2"] order <).unwrap().size_hint(), (3, Some(3)));
+        assert_eq!(
+            query!(find Value in c where [n.a == "t2"] order <)
+                .unwrap()
+                .size_hint(),
+            (3, Some(3))
+        );
         assert_found!(query!(find c where (n.a == "t2") order ^), 6, 4, 2);
     }
 
@@ -382,10 +421,25 @@ mod tests {
         mk_index(&c).unwrap();
         fill_data(&c).unwrap();
 
-        assert_eq!(query!(find Value in c where s in ["abc", "xyz"]).unwrap().size_hint(), (2, Some(2)));
+        assert_eq!(
+            query!(find Value in c where s in ["abc", "xyz"])
+                .unwrap()
+                .size_hint(),
+            (2, Some(2))
+        );
         assert_found!(query!(find c where [s in ["abc", "xyz"]] order >), 1, 4);
-        assert_found!(query!(find in c where (n.a in ["t1", "t4"]) order by >), 2, 4, 5);
-        assert_eq!(query!(find Value in c where [n.a in ["t2"]] order <).unwrap().size_hint(), (3, Some(3)));
+        assert_found!(
+            query!(find in c where (n.a in ["t1", "t4"]) order by >),
+            2,
+            4,
+            5
+        );
+        assert_eq!(
+            query!(find Value in c where [n.a in ["t2"]] order <)
+                .unwrap()
+                .size_hint(),
+            (3, Some(3))
+        );
         assert_found!(query!(find c where (n.a in ["t2"]) order ^), 6, 4, 2);
     }
 
@@ -496,7 +550,12 @@ mod tests {
         fill_data(&c).unwrap();
 
         assert_found!(query!(find c where b == true || i == 2), 2, 3, 4, 5, 6);
-        assert_found!(query!(find c where [n.i == 2 || i == 2] order by <), 5, 3, 2);
+        assert_found!(
+            query!(find c where [n.i == 2 || i == 2] order by <),
+            5,
+            3,
+            2
+        );
     }
 
     #[test]
