@@ -1,14 +1,15 @@
 use lmdb::{
-    self, open::Flags as OpenFlags, Cursor, CursorIter, Database, DatabaseOptions, EnvBuilder,
-    Environment, MaybeOwned, ReadTransaction,
+    self, Cursor, CursorIter, Database, DatabaseOptions, Environment, MaybeOwned, ReadTransaction,
 };
 use ron::de::from_str as from_db_name;
 use std::collections::HashMap;
-use std::fs::create_dir_all;
 use std::path::Path;
 use std::sync::{Arc, RwLock};
 
-use super::{Collection, CollectionDef, IndexDef, Result, ResultWrap, Serial, SerialGenerator};
+use super::{
+    Collection, CollectionDef, IndexDef, Result, ResultWrap, Serial, SerialGenerator,
+    WrappedEnvironment,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) enum DatabaseDef {
@@ -82,7 +83,7 @@ impl From<lmdb::EnvInfo> for Info {
 
 /// Storage of documents
 pub struct Storage {
-    env: Arc<Environment>,
+    env: WrappedEnvironment,
     gen: Arc<SerialGenerator>,
     collections: RwLock<Vec<Arc<Collection>>>,
 }
@@ -95,13 +96,7 @@ impl Storage {
     /// On opening storage the existing collections and indexes will be restored automatically.
     ///
     pub fn open<P: AsRef<Path>>(path: P) -> Result<Self> {
-        let path = path.as_ref();
-        let db_path = path.to_str().ok_or("Invalid db path").wrap_err()?;
-        let mut bld = EnvBuilder::new().wrap_err()?;
-        bld.set_maxdbs(1023).wrap_err()?;
-
-        create_dir_all(path).wrap_err()?;
-        let env = Arc::new(unsafe { bld.open(db_path, OpenFlags::empty(), 0o600) }.wrap_err()?);
+        let env = WrappedEnvironment::new(path)?;
 
         let db =
             Arc::new(Database::open(env.clone(), None, &DatabaseOptions::defaults()).wrap_err()?);
@@ -115,8 +110,7 @@ impl Storage {
                 .into_iter()
                 .map(|(def, index_defs)| {
                     Collection::new(env.clone(), gen.clone(), def, index_defs).map(Arc::new)
-                })
-                .collect::<Result<Vec<_>>>()?,
+                }).collect::<Result<Vec<_>>>()?,
         );
 
         Ok(Self {
@@ -220,10 +214,10 @@ fn load_databases(
         |c, a| c.first(a),
         Cursor::next::<str, [u8]>,
     ).wrap_err()?
-        .map(|res| {
-            res.wrap_err()
-                .and_then(|(key, _val)| from_db_name(key).wrap_err())
-        }) {
+    .map(|res| {
+        res.wrap_err()
+            .and_then(|(key, _val)| from_db_name(key).wrap_err())
+    }) {
         match res {
             Ok(DatabaseDef::Collection(def)) => {
                 last_serial = usize::max(last_serial, def.0);

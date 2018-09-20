@@ -162,17 +162,19 @@ extern crate serde_json;
 mod test;
 
 mod collection;
+mod database;
 mod document;
 mod enumerate;
+mod environment;
 mod error;
 mod filter;
 mod float;
 mod index;
 mod modify;
+mod pool;
 mod selection;
 mod storage;
 mod value;
-mod wrapped_database;
 
 #[macro_use]
 mod macros;
@@ -187,11 +189,13 @@ pub use storage::{Info, Stats, Storage};
 pub use value::{KeyData, KeyType};
 
 use collection::CollectionDef;
+use database::WrappedDatabase;
 use enumerate::{Serial, SerialGenerator};
+use environment::WrappedEnvironment;
 use index::{Index, IndexDef};
+use pool::Pool;
 use selection::Selection;
 use storage::DatabaseDef;
-use wrapped_database::WrappedDatabase;
 
 #[cfg(test)]
 mod tests {

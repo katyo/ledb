@@ -1,8 +1,8 @@
 use lmdb::{
     put::{NODUPDATA, NOOVERWRITE},
     traits::CreateCursor,
-    ConstAccessor, Cursor, CursorIter, Database, DatabaseOptions, Environment, LmdbResultExt,
-    MaybeOwned, ReadTransaction, Unaligned, WriteAccessor,
+    ConstAccessor, Cursor, CursorIter, Database, DatabaseOptions, LmdbResultExt, MaybeOwned,
+    ReadTransaction, Unaligned, WriteAccessor,
 };
 use ron::ser::to_string as to_db_name;
 use std::collections::HashSet;
@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 use super::{
     DatabaseDef, Document, KeyData, KeyType, OrderKind, Primary, Result, ResultWrap, Serial,
-    SerialGenerator, Value, WrappedDatabase,
+    SerialGenerator, Value, WrappedDatabase, WrappedEnvironment,
 };
 use float::F64;
 
@@ -69,7 +69,7 @@ pub(crate) struct Index {
 }
 
 impl Index {
-    pub(crate) fn new(env: Arc<Environment>, def: IndexDef) -> Result<Self> {
+    pub(crate) fn new(env: WrappedEnvironment, def: IndexDef) -> Result<Self> {
         let db_name = to_db_name(&DatabaseDef::Index(def.clone())).wrap_err()?;
 
         let IndexDef(_serial, _coll, path, kind, key) = def;

@@ -1,6 +1,6 @@
 use lmdb::{
     put::Flags as PutFlags, traits::CreateCursor, Cursor, CursorIter, Database, DatabaseOptions,
-    Environment, LmdbResultExt, MaybeOwned, ReadTransaction, Unaligned, WriteTransaction,
+    LmdbResultExt, MaybeOwned, ReadTransaction, Unaligned, WriteTransaction,
 };
 use ron::ser::to_string as to_db_name;
 use serde::{de::DeserializeOwned, Serialize};
@@ -12,6 +12,7 @@ use std::sync::{Arc, RwLock};
 use super::{
     DatabaseDef, Document, Filter, Identifier, Index, IndexDef, IndexKind, KeyType, Modify, Order,
     OrderKind, Primary, Result, ResultWrap, Serial, SerialGenerator, Value, WrappedDatabase,
+    WrappedEnvironment,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -38,13 +39,13 @@ pub struct Collection {
     pub(crate) name: String,
     gen: Arc<SerialGenerator>,
     indexes: RwLock<Vec<Arc<Index>>>,
-    env: Arc<Environment>,
+    env: WrappedEnvironment,
     db: WrappedDatabase,
 }
 
 impl Collection {
     pub(crate) fn new(
-        env: Arc<Environment>,
+        env: WrappedEnvironment,
         gen: Arc<SerialGenerator>,
         def: CollectionDef,
         index_defs: Vec<IndexDef>,
@@ -162,13 +163,7 @@ impl Collection {
                 Ok(sel.ids)
             } else {
                 PrimaryIterator::new(txn, self.db.clone(), OrderKind::default())?
-                    .filter(move |res| {
-                        if let Ok(id) = res {
-                            sel.has(id)
-                        } else {
-                            true
-                        }
-                    })
+                    .filter(move |res| if let Ok(id) = res { sel.has(id) } else { true })
                     .collect::<Result<HashSet<_>>>()
             }
         } else {
@@ -354,12 +349,12 @@ impl Collection {
 
         let old_doc = {
             let mut access = txn.access();
-            let old_doc = if let Some(old_doc) = access.get(&self.db, &Unaligned::new(id)).to_opt()?
-            {
-                Some(Document::<Value>::from_raw(old_doc)?.with_id(id))
-            } else {
-                None
-            };
+            let old_doc =
+                if let Some(old_doc) = access.get(&self.db, &Unaligned::new(id)).to_opt()? {
+                    Some(Document::<Value>::from_raw(old_doc)?.with_id(id))
+                } else {
+                    None
+                };
 
             access
                 .put(
@@ -367,8 +362,7 @@ impl Collection {
                     &Unaligned::new(id),
                     &doc.into_raw()?,
                     PutFlags::empty(),
-                )
-                .wrap_err()?;
+                ).wrap_err()?;
 
             old_doc
         };
@@ -656,14 +650,14 @@ impl Iterator for PrimaryIterator {
 /// The `DocumentsIterator::size_hint()` method gets actual number of found documents.
 ///
 pub struct DocumentsIterator<T> {
-    env: Arc<Environment>,
+    env: WrappedEnvironment,
     db: WrappedDatabase,
     ids_iter: Box<Iterator<Item = Primary> + Send>,
     phantom_doc: PhantomData<T>,
 }
 
 impl<T> DocumentsIterator<T> {
-    pub(crate) fn new<I>(env: Arc<Environment>, db: WrappedDatabase, ids_iter: I) -> Result<Self>
+    pub(crate) fn new<I>(env: WrappedEnvironment, db: WrappedDatabase, ids_iter: I) -> Result<Self>
     where
         I: IntoIterator<Item = Primary> + 'static,
         I::IntoIter: Send,
