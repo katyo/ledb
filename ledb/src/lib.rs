@@ -157,6 +157,8 @@ extern crate supercow;
 #[macro_use]
 extern crate serde_json;
 
+extern crate dirs;
+
 #[cfg(test)]
 #[macro_use]
 mod test;

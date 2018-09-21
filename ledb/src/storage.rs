@@ -1,9 +1,11 @@
+use dirs::home_dir;
 use lmdb::{
     self, open::Flags as OpenFlags, Cursor, CursorIter, Database, DatabaseOptions, EnvBuilder,
     Environment, MaybeOwned, ReadTransaction,
 };
 use ron::de::from_str as from_db_name;
 use std::collections::HashMap;
+use std::env::current_dir;
 use std::fs::create_dir_all;
 use std::ops::Deref;
 use std::path::{Path, PathBuf};
@@ -104,7 +106,7 @@ impl Storage {
     /// On opening storage the existing collections and indexes will be restored automatically.
     ///
     pub fn new<P: AsRef<Path>>(path: P) -> Result<Self> {
-        let path = safe_canonicalize(path.as_ref())?;
+        let path = realpath(path.as_ref())?;
 
         if let Some(storage) = Pool::get(&path)? {
             Ok(Storage(storage))
@@ -322,14 +324,32 @@ fn load_databases(
 }
 
 fn open_env(path: &Path) -> Result<Environment> {
-    let db_path = path.to_str().ok_or("Invalid db path").wrap_err()?;
+    let path = path.to_str().ok_or("Invalid db path").wrap_err()?;
 
     let mut bld = EnvBuilder::new().wrap_err()?;
     bld.set_maxdbs(1023).wrap_err()?;
 
     create_dir_all(&path).wrap_err()?;
 
-    unsafe { bld.open(db_path, OpenFlags::empty(), 0o600) }.wrap_err()
+    unsafe { bld.open(path, OpenFlags::empty(), 0o600) }.wrap_err()
+}
+
+fn realpath(path: &Path) -> Result<PathBuf> {
+    let path = if path.is_relative() {
+        if let Ok(path) = path.strip_prefix("~") {
+            home_dir()
+                .ok_or_else(|| "Unable to determine home directory")
+                .wrap_err()?
+                .as_path()
+                .join(path)
+        } else {
+            current_dir().wrap_err()?.as_path().join(path)
+        }
+    } else {
+        path.to_path_buf()
+    };
+
+    safe_canonicalize(path.as_path())
 }
 
 fn safe_canonicalize(path: &Path) -> Result<PathBuf> {
