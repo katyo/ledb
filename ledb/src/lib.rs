@@ -158,6 +158,7 @@ extern crate supercow;
 extern crate serde_json;
 
 extern crate dirs;
+extern crate dunce;
 
 #[cfg(test)]
 #[macro_use]

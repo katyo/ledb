@@ -339,7 +339,7 @@ mod tests {
         pub content: String,
     }
 
-    static DB_PATH: &'static str = ".test-db";
+    static DB_PATH: &'static str = "test_db";
     
     #[test]
     fn test() {

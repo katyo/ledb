@@ -1,4 +1,5 @@
 use dirs::home_dir;
+use dunce::canonicalize;
 use lmdb::{
     self, open::Flags as OpenFlags, Cursor, CursorIter, Database, DatabaseOptions, EnvBuilder,
     Environment, MaybeOwned, ReadTransaction,
@@ -340,7 +341,9 @@ fn open_env(path: &Path) -> Result<Environment> {
 }
 
 fn realpath(path: &Path) -> Result<PathBuf> {
-    let path = if path.is_relative() {
+    let path = if path.has_root() {
+        path.to_path_buf()
+    } else {
         if let Ok(path) = path.strip_prefix("~") {
             home_dir()
                 .ok_or_else(|| "Unable to determine home directory")
@@ -350,19 +353,16 @@ fn realpath(path: &Path) -> Result<PathBuf> {
         } else {
             current_dir().wrap_err()?.as_path().join(path)
         }
-    } else {
-        path.to_path_buf()
     };
-
     safe_canonicalize(path.as_path())
 }
 
 fn safe_canonicalize(path: &Path) -> Result<PathBuf> {
-    match path.canonicalize() {
+    match canonicalize(path) {
         Ok(canonical) => Ok(canonical),
         Err(error) => if let Some(parent) = path.parent() {
             let child = path.strip_prefix(parent).unwrap();
-            safe_canonicalize(parent).map(|parent| parent.join(child))
+            safe_canonicalize(parent).map(|canonical_parent| canonical_parent.join(child))
         } else {
             Err(error).wrap_err()
         },

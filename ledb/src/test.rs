@@ -1,5 +1,6 @@
 use super::{Result, Storage};
 use std::fs::remove_dir_all;
+use std::path::Path;
 
 /*
 macro_rules! json_str {
@@ -33,10 +34,10 @@ macro_rules! test_build {
     };
 }
 
-static DB_DIR: &'static str = ".test_dbs";
+static DB_DIR: &'static str = "test_db";
 
 pub fn test_db(id: &'static str) -> Result<Storage> {
-    let path = format!("{}/{}", DB_DIR, id);
+    let path = Path::new(DB_DIR).join(Path::new(id));
 
     let _ = remove_dir_all(&path);
 
