@@ -1,27 +1,26 @@
-use lmdb::Environment;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Once, RwLock, Weak, ONCE_INIT};
 
-use super::{Result, ResultWrap};
+use super::{Result, ResultWrap, StorageData};
 
-type Environments = Arc<RwLock<HashMap<PathBuf, Weak<Environment>>>>;
+type Storages = Arc<RwLock<HashMap<PathBuf, Weak<StorageData>>>>;
 
-static mut ENVIRONMENTS: Option<Environments> = None;
-static INITIALIZE_ENVIRONMENTS: Once = ONCE_INIT;
+static mut STORAGES: Option<Storages> = None;
+static INITIALIZE_STORAGES: Once = ONCE_INIT;
 
 #[inline]
-fn init_environments() {
-    INITIALIZE_ENVIRONMENTS.call_once(|| unsafe {
-        ENVIRONMENTS = Some(Arc::new(RwLock::new(HashMap::new())));
+fn init_storages() {
+    INITIALIZE_STORAGES.call_once(|| unsafe {
+        STORAGES = Some(Arc::new(RwLock::new(HashMap::new())));
     });
 }
 
-fn get_environments() -> Environments {
-    init_environments();
+fn get_storages() -> Storages {
+    init_storages();
 
-    if let Some(environments) = unsafe { &ENVIRONMENTS } {
-        environments.clone()
+    if let Some(storages) = unsafe { &STORAGES } {
+        storages.clone()
     } else {
         unreachable!();
     }
@@ -31,26 +30,26 @@ pub(crate) struct Pool;
 
 impl Pool {
     #[inline]
-    pub(crate) fn get_environment<P: AsRef<Path>>(path: P) -> Result<Option<Arc<Environment>>> {
+    pub(crate) fn get<P: AsRef<Path>>(path: P) -> Result<Option<Arc<StorageData>>> {
         let path = path.as_ref();
-        let environments = get_environments();
-        let map = environments.read().wrap_err()?;
+        let storages = get_storages();
+        let map = storages.read().wrap_err()?;
         Ok(map.get(path).and_then(|env| env.upgrade()))
     }
 
     #[inline]
-    pub(crate) fn put_environment(path: PathBuf, env: &Arc<Environment>) -> Result<()> {
-        let environments = get_environments();
-        let mut map = environments.write().wrap_err()?;
-        map.insert(path, Arc::downgrade(env));
+    pub(crate) fn put(path: PathBuf, storage: &Arc<StorageData>) -> Result<()> {
+        let storages = get_storages();
+        let mut map = storages.write().wrap_err()?;
+        map.insert(path, Arc::downgrade(storage));
         Ok(())
     }
 
     #[inline]
-    pub(crate) fn del_environment<P: AsRef<Path>>(path: P) -> Result<()> {
+    pub(crate) fn del<P: AsRef<Path>>(path: P) -> Result<()> {
         let path = path.as_ref();
-        let environments = get_environments();
-        let mut map = environments.write().wrap_err()?;
+        let storages = get_storages();
+        let mut map = storages.write().wrap_err()?;
         map.remove(path);
         Ok(())
     }

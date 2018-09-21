@@ -9,8 +9,8 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use super::{
-    DatabaseDef, Document, KeyData, KeyType, OrderKind, Primary, Result, ResultWrap, Serial,
-    SerialGenerator, Value, WrappedDatabase, WrappedEnvironment,
+    DatabaseDef, Document, Enumerable, KeyData, KeyType, OrderKind, Primary, Result, ResultWrap,
+    Serial, Storage, Value, WrappedDatabase,
 };
 use float::F64;
 
@@ -53,10 +53,11 @@ impl IndexDef {
     ) -> Self {
         IndexDef(0, coll.into(), path.into(), kind, key)
     }
+}
 
-    pub fn with_serial(mut self, gen: &SerialGenerator) -> Self {
-        self.0 = gen.gen();
-        self
+impl Enumerable for IndexDef {
+    fn enumerate(&mut self, serial: Serial) {
+        self.0 = serial;
     }
 }
 
@@ -69,7 +70,7 @@ pub(crate) struct Index {
 }
 
 impl Index {
-    pub(crate) fn new(env: WrappedEnvironment, def: IndexDef) -> Result<Self> {
+    pub(crate) fn new(storage: Storage, def: IndexDef) -> Result<Self> {
         let db_name = to_db_name(&DatabaseDef::Index(def.clone())).wrap_err()?;
 
         let IndexDef(_serial, _coll, path, kind, key) = def;
@@ -97,7 +98,8 @@ impl Index {
             }
         };
 
-        let db = WrappedDatabase::new(Database::open(env, Some(&db_name), &db_opts).wrap_err()?);
+        let db =
+            WrappedDatabase::new(Database::open(storage, Some(&db_name), &db_opts).wrap_err()?);
 
         Ok(Self {
             path,

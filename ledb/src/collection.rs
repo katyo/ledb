@@ -10,9 +10,8 @@ use std::marker::PhantomData;
 use std::sync::{Arc, RwLock};
 
 use super::{
-    DatabaseDef, Document, Filter, Identifier, Index, IndexDef, IndexKind, KeyType, Modify, Order,
-    OrderKind, Primary, Result, ResultWrap, Serial, SerialGenerator, Value, WrappedDatabase,
-    WrappedEnvironment,
+    DatabaseDef, Document, Enumerable, Filter, Identifier, Index, IndexDef, IndexKind, KeyType,
+    Modify, Order, OrderKind, Primary, Result, ResultWrap, Serial, Storage, Value, WrappedDatabase,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -27,26 +26,25 @@ impl CollectionDef {
     pub fn new<S: AsRef<str>>(name: S) -> Self {
         CollectionDef(0, name.as_ref().into())
     }
+}
 
-    pub fn with_serial(mut self, gen: &SerialGenerator) -> Self {
-        self.0 = gen.gen();
-        self
+impl Enumerable for CollectionDef {
+    fn enumerate(&mut self, serial: Serial) {
+        self.0 = serial;
     }
 }
 
 /// Collection of documents
 pub struct Collection {
     pub(crate) name: String,
-    gen: Arc<SerialGenerator>,
     indexes: RwLock<Vec<Arc<Index>>>,
-    env: WrappedEnvironment,
+    storage: Storage,
     db: WrappedDatabase,
 }
 
 impl Collection {
     pub(crate) fn new(
-        env: WrappedEnvironment,
-        gen: Arc<SerialGenerator>,
+        storage: Storage,
         def: CollectionDef,
         index_defs: Vec<IndexDef>,
     ) -> Result<Self> {
@@ -56,21 +54,21 @@ impl Collection {
 
         let db_opts = DatabaseOptions::create_map::<Unaligned<Primary>>();
 
-        let db =
-            WrappedDatabase::new(Database::open(env.clone(), Some(&db_name), &db_opts).wrap_err()?);
+        let db = WrappedDatabase::new(
+            Database::open(storage.clone(), Some(&db_name), &db_opts).wrap_err()?,
+        );
 
         let indexes = RwLock::new(
             index_defs
                 .into_iter()
-                .map(|def| Index::new(env.clone(), def).map(Arc::new))
+                .map(|def| Index::new(storage.clone(), def).map(Arc::new))
                 .collect::<Result<Vec<_>>>()?,
         );
 
         Ok(Self {
             name,
-            gen,
             indexes,
-            env,
+            storage,
             db,
         })
     }
@@ -102,7 +100,7 @@ impl Collection {
         filter: Option<Filter>,
         order: Order,
     ) -> Result<DocumentsIterator<T>> {
-        let txn = Arc::new(ReadTransaction::new(self.env.clone())?);
+        let txn = Arc::new(ReadTransaction::new(self.storage.clone())?);
 
         let ids = match (filter, order) {
             (None, Order::Primary(order)) => {
@@ -138,7 +136,7 @@ impl Collection {
                 .collect::<Result<Vec<_>>>()?,
         };
 
-        DocumentsIterator::new(self.env.clone(), self.db.clone(), ids)
+        DocumentsIterator::new(self.storage.clone(), self.db.clone(), ids)
     }
 
     /// Find documents using optional filter and ordering
@@ -155,7 +153,7 @@ impl Collection {
     }
 
     pub fn find_ids(&self, filter: Option<Filter>) -> Result<HashSet<Primary>> {
-        let txn = Arc::new(ReadTransaction::new(self.env.clone())?);
+        let txn = Arc::new(ReadTransaction::new(self.storage.clone())?);
 
         if let Some(filter) = filter {
             let sel = filter.apply(&txn, &self)?;
@@ -183,7 +181,7 @@ impl Collection {
 
         let mut count = 0;
         {
-            let txn = WriteTransaction::new(self.env.clone())?;
+            let txn = WriteTransaction::new(self.storage.clone())?;
             let f = PutFlags::empty();
             {
                 for id in found_ids {
@@ -224,7 +222,7 @@ impl Collection {
 
         let mut count = 0;
         {
-            let txn = WriteTransaction::new(self.env.clone())?;
+            let txn = WriteTransaction::new(self.storage.clone())?;
             {
                 for id in found_ids {
                     let old_doc = {
@@ -266,7 +264,7 @@ impl Collection {
     {
         self.purge()?;
 
-        let txn = WriteTransaction::new(self.env.clone())?;
+        let txn = WriteTransaction::new(self.storage.clone())?;
         let f = PutFlags::empty();
         let mut count = 0;
 
@@ -295,7 +293,7 @@ impl Collection {
     /// Remove all documents from the collection
     ///
     pub fn purge(&self) -> Result<()> {
-        let txn = WriteTransaction::new(self.env.clone()).wrap_err()?;
+        let txn = WriteTransaction::new(self.storage.clone()).wrap_err()?;
         let mut access = txn.access();
 
         let indexes = self.indexes.read().wrap_err()?;
@@ -308,7 +306,7 @@ impl Collection {
 
     /// Checks the collection contains document with specified primary key
     pub fn has(&self, id: Primary) -> Result<bool> {
-        let txn = ReadTransaction::new(self.env.clone()).wrap_err()?;
+        let txn = ReadTransaction::new(self.storage.clone()).wrap_err()?;
         let access = txn.access();
 
         access
@@ -320,7 +318,7 @@ impl Collection {
 
     /// Get document from collection using primary key/identifier
     pub fn get<T: DeserializeOwned>(&self, id: Primary) -> Result<Option<Document<T>>> {
-        let txn = ReadTransaction::new(self.env.clone()).wrap_err()?;
+        let txn = ReadTransaction::new(self.storage.clone()).wrap_err()?;
         let access = txn.access();
 
         Ok(match access
@@ -345,7 +343,7 @@ impl Collection {
         let id = doc.get_id().unwrap();
         let doc = doc.into_gen()?;
 
-        let txn = WriteTransaction::new(self.env.clone()).wrap_err()?;
+        let txn = WriteTransaction::new(self.storage.clone()).wrap_err()?;
 
         let old_doc = {
             let mut access = txn.access();
@@ -384,7 +382,7 @@ impl Collection {
 
     /// Delete document with specified primary key/identifier from the collection
     pub fn delete(&self, id: Primary) -> Result<bool> {
-        let txn = WriteTransaction::new(self.env.clone()).wrap_err()?;
+        let txn = WriteTransaction::new(self.storage.clone()).wrap_err()?;
 
         let old_doc = {
             let mut access = txn.access();
@@ -423,7 +421,7 @@ impl Collection {
 
     /// Get the last primary key/identifier of inserted document
     pub fn last_id(&self) -> Result<Primary> {
-        let txn = ReadTransaction::new(self.env.clone()).wrap_err()?;
+        let txn = ReadTransaction::new(self.storage.clone()).wrap_err()?;
         let mut cursor = txn.cursor(self.db.clone()).wrap_err()?;
         let access = txn.access();
 
@@ -503,17 +501,18 @@ impl Collection {
 
         // create new index
         let index = Index::new(
-            self.env.clone(),
-            IndexDef::new(self.name.clone(), path, kind, key).with_serial(&self.gen),
+            self.storage.clone(),
+            self.storage
+                .enumerate(IndexDef::new(self.name.clone(), path, kind, key)),
         ).map(Arc::new)?;
 
         {
             // fulfill index
-            let txn = WriteTransaction::new(self.env.clone()).wrap_err()?;
+            let txn = WriteTransaction::new(self.storage.clone()).wrap_err()?;
             {
                 let mut access = txn.access();
 
-                let txn2 = ReadTransaction::new(self.env.clone()).wrap_err()?;
+                let txn2 = ReadTransaction::new(self.storage.clone()).wrap_err()?;
                 let cursor2 = txn2.cursor(self.db.clone()).wrap_err()?;
                 let access2 = txn2.access();
 
@@ -552,7 +551,7 @@ impl Collection {
         Ok(if let Some(pos) = found_pos {
             let mut indexes = self.indexes.write().wrap_err()?;
             let index = indexes.remove(pos);
-            let txn = WriteTransaction::new(self.env.clone())?;
+            let txn = WriteTransaction::new(self.storage.clone())?;
             let mut access = txn.access();
             index.to_delete(&mut access)?;
             true
@@ -580,7 +579,7 @@ impl Collection {
     }
 
     pub(crate) fn to_delete(&self) -> Result<()> {
-        let txn = WriteTransaction::new(self.env.clone()).wrap_err()?;
+        let txn = WriteTransaction::new(self.storage.clone()).wrap_err()?;
         let mut access = txn.access();
 
         let indexes = self.indexes.read().wrap_err()?;
@@ -650,20 +649,20 @@ impl Iterator for PrimaryIterator {
 /// The `DocumentsIterator::size_hint()` method gets actual number of found documents.
 ///
 pub struct DocumentsIterator<T> {
-    env: WrappedEnvironment,
+    storage: Storage,
     db: WrappedDatabase,
     ids_iter: Box<Iterator<Item = Primary> + Send>,
     phantom_doc: PhantomData<T>,
 }
 
 impl<T> DocumentsIterator<T> {
-    pub(crate) fn new<I>(env: WrappedEnvironment, db: WrappedDatabase, ids_iter: I) -> Result<Self>
+    pub(crate) fn new<I>(storage: Storage, db: WrappedDatabase, ids_iter: I) -> Result<Self>
     where
         I: IntoIterator<Item = Primary> + 'static,
         I::IntoIter: Send,
     {
         Ok(Self {
-            env,
+            storage,
             db,
             ids_iter: Box::new(ids_iter.into_iter()),
             phantom_doc: PhantomData,
@@ -679,7 +678,7 @@ where
 
     fn next(&mut self) -> Option<Self::Item> {
         self.ids_iter.next().map(|id| {
-            let txn = ReadTransaction::new(self.env.clone())?;
+            let txn = ReadTransaction::new(self.storage.clone())?;
             {
                 let access = txn.access();
                 access

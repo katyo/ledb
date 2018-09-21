@@ -1,14 +1,18 @@
 use lmdb::{
-    self, Cursor, CursorIter, Database, DatabaseOptions, Environment, MaybeOwned, ReadTransaction,
+    self, open::Flags as OpenFlags, Cursor, CursorIter, Database, DatabaseOptions, EnvBuilder,
+    Environment, MaybeOwned, ReadTransaction,
 };
 use ron::de::from_str as from_db_name;
 use std::collections::HashMap;
-use std::path::Path;
+use std::fs::create_dir_all;
+use std::ops::Deref;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
+use supercow::{ext::ConstDeref, NonSyncSupercow, Supercow};
 
 use super::{
-    Collection, CollectionDef, IndexDef, Result, ResultWrap, Serial, SerialGenerator,
-    WrappedEnvironment,
+    Collection, CollectionDef, Enumerable, IndexDef, Pool, Result, ResultWrap, Serial,
+    SerialGenerator,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -81,12 +85,16 @@ impl From<lmdb::EnvInfo> for Info {
     }
 }
 
-/// Storage of documents
-pub struct Storage {
-    env: WrappedEnvironment,
-    gen: Arc<SerialGenerator>,
+pub(crate) struct StorageData {
+    path: PathBuf,
+    env: Environment,
+    gen: SerialGenerator,
     collections: RwLock<Vec<Arc<Collection>>>,
 }
+
+/// Storage of documents
+#[derive(Clone)]
+pub struct Storage(Arc<StorageData>);
 
 impl Storage {
     /// Open documents storage
@@ -95,36 +103,65 @@ impl Storage {
     ///
     /// On opening storage the existing collections and indexes will be restored automatically.
     ///
-    pub fn open<P: AsRef<Path>>(path: P) -> Result<Self> {
-        let env = WrappedEnvironment::new(path)?;
+    pub fn new<P: AsRef<Path>>(path: P) -> Result<Self> {
+        let path = safe_canonicalize(path.as_ref())?;
 
-        let db =
-            Arc::new(Database::open(env.clone(), None, &DatabaseOptions::defaults()).wrap_err()?);
+        if let Some(storage) = Pool::get(&path)? {
+            Ok(Storage(storage))
+        } else {
+            Self::open(path)
+        }
+    }
+
+    fn open(path: PathBuf) -> Result<Self> {
+        let env = open_env(&path)?;
+
+        let gen = SerialGenerator::new();
+
+        let collections = RwLock::new(Vec::new());
+
+        let storage = Storage(Arc::new(StorageData {
+            path: path.clone(),
+            env,
+            gen,
+            collections,
+        }));
+
+        storage.load_collections()?;
+
+        Pool::put(path, &storage.0)?;
+
+        Ok(storage)
+    }
+
+    fn load_collections(&self) -> Result<()> {
+        let env = &self.0.env;
+
+        let db = Database::open(env, None, &DatabaseOptions::defaults()).wrap_err()?;
 
         let (last_serial, db_def) = load_databases(&env, &db)?;
 
-        let gen = Arc::new(SerialGenerator::new(last_serial));
+        self.0.gen.set(last_serial);
 
-        let collections = RwLock::new(
-            db_def
-                .into_iter()
-                .map(|(def, index_defs)| {
-                    Collection::new(env.clone(), gen.clone(), def, index_defs).map(Arc::new)
-                }).collect::<Result<Vec<_>>>()?,
-        );
+        let mut collections = self.0.collections.write().wrap_err()?;
 
-        Ok(Self {
-            env: env.clone(),
-            gen,
-            collections,
-        })
+        *collections = db_def
+            .into_iter()
+            .map(|(def, index_defs)| Collection::new(self.clone(), def, index_defs).map(Arc::new))
+            .collect::<Result<Vec<_>>>()?;
+
+        Ok(())
+    }
+
+    pub(crate) fn enumerate<E: Enumerable>(&self, data: E) -> E {
+        self.0.gen.enumerate(data)
     }
 
     /// Check collection exists
     ///
     pub fn has_collection<N: AsRef<str>>(&self, name: N) -> Result<bool> {
         let name = name.as_ref();
-        let collections = self.collections.read().wrap_err()?;
+        let collections = self.0.collections.read().wrap_err()?;
         // search alive collection
         Ok(collections.iter().any(|collection| collection.name == name))
     }
@@ -137,7 +174,7 @@ impl Storage {
         let name = name.as_ref();
 
         {
-            let collections = self.collections.read().wrap_err()?;
+            let collections = self.0.collections.read().wrap_err()?;
             // search alive collection
             if let Some(collection) = collections
                 .iter()
@@ -149,13 +186,12 @@ impl Storage {
 
         // create new collection
         let collection = Collection::new(
-            self.env.clone(),
-            self.gen.clone(),
-            CollectionDef::new(name).with_serial(&self.gen),
+            self.clone(),
+            self.enumerate(CollectionDef::new(name)),
             Vec::new(),
         ).map(Arc::new)?;
 
-        let mut collections = self.collections.write().wrap_err()?;
+        let mut collections = self.0.collections.write().wrap_err()?;
         collections.push(collection.clone());
 
         Ok(collection)
@@ -165,14 +201,14 @@ impl Storage {
         let name = name.as_ref();
 
         let found_pos = {
-            let collections = self.collections.read().wrap_err()?;
+            let collections = self.0.collections.read().wrap_err()?;
             collections
                 .iter()
                 .position(|collection| collection.name == name)
         };
 
         Ok(if let Some(pos) = found_pos {
-            let mut collections = self.collections.write().wrap_err()?;
+            let mut collections = self.0.collections.write().wrap_err()?;
             let collection = collections.remove(pos);
             collection.to_delete()?;
             true
@@ -182,7 +218,7 @@ impl Storage {
     }
 
     pub fn get_collections(&self) -> Result<Vec<String>> {
-        let collections = self.collections.read().wrap_err()?;
+        let collections = self.0.collections.read().wrap_err()?;
         Ok(collections
             .iter()
             .map(|collection| collection.name.clone())
@@ -190,11 +226,51 @@ impl Storage {
     }
 
     pub fn get_stats(&self) -> Result<Stats> {
-        self.env.stat().map(Stats::from).wrap_err()
+        self.0.env.stat().map(Stats::from).wrap_err()
     }
 
     pub fn get_info(&self) -> Result<Info> {
-        self.env.info().map(Info::from).wrap_err()
+        self.0.env.info().map(Info::from).wrap_err()
+    }
+}
+
+impl Drop for Storage {
+    fn drop(&mut self) {
+        if let Err(e) = Pool::del(&self.0.path) {
+            eprintln!("Error when dropping storage: {}", e);
+        }
+    }
+}
+
+impl Deref for Storage {
+    type Target = Environment;
+
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        &self.0.env
+    }
+}
+
+unsafe impl ConstDeref for Storage {
+    type Target = Environment;
+
+    #[inline]
+    fn const_deref(&self) -> &Self::Target {
+        &self.0.env
+    }
+}
+
+impl<'env> Into<Supercow<'env, Environment>> for Storage {
+    fn into(self) -> Supercow<'env, Environment> {
+        let this = self.clone();
+        Supercow::shared(this)
+    }
+}
+
+impl<'env> Into<NonSyncSupercow<'env, Environment>> for Storage {
+    fn into(self) -> NonSyncSupercow<'env, Environment> {
+        let this = self.clone();
+        Supercow::shared(this)
     }
 }
 
@@ -241,4 +317,27 @@ fn load_databases(
         last_serial,
         defs.into_iter().map(|(_key, val)| val).collect(),
     ))
+}
+
+fn open_env(path: &Path) -> Result<Environment> {
+    let db_path = path.to_str().ok_or("Invalid db path").wrap_err()?;
+
+    let mut bld = EnvBuilder::new().wrap_err()?;
+    bld.set_maxdbs(1023).wrap_err()?;
+
+    create_dir_all(&path).wrap_err()?;
+
+    unsafe { bld.open(db_path, OpenFlags::empty(), 0o600) }.wrap_err()
+}
+
+fn safe_canonicalize(path: &Path) -> Result<PathBuf> {
+    match path.canonicalize() {
+        Ok(canonical) => Ok(canonical),
+        Err(error) => if let Some(parent) = path.parent() {
+            let child = path.strip_prefix(parent).unwrap();
+            safe_canonicalize(parent).map(|parent| parent.join(child))
+        } else {
+            Err(error).wrap_err()
+        },
+    }
 }

@@ -33,7 +33,7 @@ fn main() {
     let db_path = ".test_dbs/my_temp_db";
     let _ = std::fs::remove_dir_all(&db_path);
 
-    let storage = Storage::open(&db_path).unwrap();
+    let storage = Storage::new(&db_path).unwrap();
     
     let collection = storage.collection("my-docs").unwrap();
     
@@ -165,7 +165,6 @@ mod collection;
 mod database;
 mod document;
 mod enumerate;
-mod environment;
 mod error;
 mod filter;
 mod float;
@@ -190,12 +189,12 @@ pub use value::{KeyData, KeyType};
 
 use collection::CollectionDef;
 use database::WrappedDatabase;
-use enumerate::{Serial, SerialGenerator};
-use environment::WrappedEnvironment;
+use enumerate::{Enumerable, Serial, SerialGenerator};
 use index::{Index, IndexDef};
 use pool::Pool;
 use selection::Selection;
 use storage::DatabaseDef;
+use storage::StorageData;
 
 #[cfg(test)]
 mod tests {
