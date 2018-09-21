@@ -236,6 +236,11 @@ impl Storage {
     pub fn get_info(&self) -> Result<Info> {
         self.0.env.info().map(Info::from).wrap_err()
     }
+
+    /// Get openned storages
+    pub fn openned() -> Result<Vec<PathBuf>> {
+        Pool::lst()
+    }
 }
 
 impl Drop for Storage {

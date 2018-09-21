@@ -53,4 +53,11 @@ impl Pool {
         map.remove(path);
         Ok(())
     }
+
+    #[inline]
+    pub(crate) fn lst() -> Result<Vec<PathBuf>> {
+        let storages = get_storages();
+        let map = storages.read().wrap_err()?;
+        Ok(map.keys().cloned().collect())
+    }
 }
