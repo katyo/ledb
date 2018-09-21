@@ -7,11 +7,15 @@ use serde::{de::DeserializeOwned, Serialize};
 use std::cmp::Ordering;
 use std::collections::HashSet;
 use std::marker::PhantomData;
+use std::mem::replace;
+use std::ops::Deref;
+use std::sync::atomic::{AtomicBool, Ordering as AtomicOrdering};
 use std::sync::{Arc, RwLock};
+use supercow::{ext::ConstDeref, Supercow};
 
 use super::{
     DatabaseDef, Document, Enumerable, Filter, Identifier, Index, IndexDef, IndexKind, KeyType,
-    Modify, Order, OrderKind, Primary, Result, ResultWrap, Serial, Storage, Value, WrappedDatabase,
+    Modify, Order, OrderKind, Primary, Result, ResultWrap, Serial, Storage, Value,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -34,13 +38,18 @@ impl Enumerable for CollectionDef {
     }
 }
 
-/// Collection of documents
-pub struct Collection {
-    pub(crate) name: String,
-    indexes: RwLock<Vec<Arc<Index>>>,
+struct CollectionData {
+    name: String,
+    indexes: RwLock<Vec<Index>>,
     storage: Storage,
-    db: WrappedDatabase,
+    db: Database<'static>,
+    // Remove marker
+    delete: AtomicBool,
 }
+
+/// Collection of documents
+#[derive(Clone)]
+pub struct Collection(Option<Arc<CollectionData>>);
 
 impl Collection {
     pub(crate) fn new(
@@ -54,23 +63,34 @@ impl Collection {
 
         let db_opts = DatabaseOptions::create_map::<Unaligned<Primary>>();
 
-        let db = WrappedDatabase::new(
-            Database::open(storage.clone(), Some(&db_name), &db_opts).wrap_err()?,
-        );
+        let db = Database::open(storage.clone(), Some(&db_name), &db_opts).wrap_err()?;
 
         let indexes = RwLock::new(
             index_defs
                 .into_iter()
-                .map(|def| Index::new(storage.clone(), def).map(Arc::new))
+                .map(|def| Index::new(storage.clone(), def))
                 .collect::<Result<Vec<_>>>()?,
         );
 
-        Ok(Self {
+        Ok(Collection(Some(Arc::new(CollectionData {
             name,
             indexes,
             storage,
             db,
-        })
+            delete: AtomicBool::new(false),
+        }))))
+    }
+
+    fn handle(&self) -> &CollectionData {
+        if let Some(ref handle) = self.0 {
+            handle
+        } else {
+            unreachable!();
+        }
+    }
+
+    pub fn name(&self) -> &str {
+        &self.handle().name
     }
 
     /// Insert document into collection
@@ -100,11 +120,17 @@ impl Collection {
         filter: Option<Filter>,
         order: Order,
     ) -> Result<DocumentsIterator<T>> {
-        let txn = Arc::new(ReadTransaction::new(self.storage.clone())?);
+        let handle = if let Some(handle) = &self.0 {
+            handle
+        } else {
+            unreachable!();
+        };
+
+        let txn = Arc::new(ReadTransaction::new(handle.storage.clone())?);
 
         let ids = match (filter, order) {
             (None, Order::Primary(order)) => {
-                PrimaryIterator::new(txn.clone(), self.db.clone(), order)?
+                PrimaryIterator::new(txn.clone(), self.clone(), order)?
                     .collect::<Result<Vec<_>>>()?
             }
 
@@ -117,7 +143,7 @@ impl Collection {
                 let sel = filter.apply(&txn, &self)?;
 
                 if sel.inv {
-                    sel.filter(PrimaryIterator::new(txn.clone(), self.db.clone(), order)?)
+                    sel.filter(PrimaryIterator::new(txn.clone(), self.clone(), order)?)
                         .collect::<Result<Vec<_>>>()?
                 } else {
                     let mut ids = sel.ids.into_iter().collect::<Vec<_>>();
@@ -136,7 +162,7 @@ impl Collection {
                 .collect::<Result<Vec<_>>>()?,
         };
 
-        DocumentsIterator::new(self.storage.clone(), self.db.clone(), ids)
+        DocumentsIterator::new(handle.storage.clone(), self.clone(), ids)
     }
 
     /// Find documents using optional filter and ordering
@@ -153,19 +179,21 @@ impl Collection {
     }
 
     pub fn find_ids(&self, filter: Option<Filter>) -> Result<HashSet<Primary>> {
-        let txn = Arc::new(ReadTransaction::new(self.storage.clone())?);
+        let handle = self.handle();
+
+        let txn = Arc::new(ReadTransaction::new(handle.storage.clone())?);
 
         if let Some(filter) = filter {
             let sel = filter.apply(&txn, &self)?;
             if !sel.inv {
                 Ok(sel.ids)
             } else {
-                PrimaryIterator::new(txn, self.db.clone(), OrderKind::default())?
+                PrimaryIterator::new(txn, self.clone(), OrderKind::default())?
                     .filter(move |res| if let Ok(id) = res { sel.has(id) } else { true })
                     .collect::<Result<HashSet<_>>>()
             }
         } else {
-            PrimaryIterator::new(txn, self.db.clone(), OrderKind::default())?
+            PrimaryIterator::new(txn, self.clone(), OrderKind::default())?
                 .collect::<Result<HashSet<_>>>()
         }
     }
@@ -177,23 +205,25 @@ impl Collection {
     /// Returns the number of affected documents.
     ///
     pub fn update(&self, filter: Option<Filter>, modify: Modify) -> Result<usize> {
+        let handle = self.handle();
+
         let found_ids = self.find_ids(filter)?;
 
         let mut count = 0;
         {
-            let txn = WriteTransaction::new(self.storage.clone())?;
+            let txn = WriteTransaction::new(handle.storage.clone())?;
             let f = PutFlags::empty();
             {
                 for id in found_ids {
                     let (old_doc, new_doc) = {
                         let mut access = txn.access();
                         let old_doc = Document::<Value>::from_raw(
-                            access.get(&self.db, &Unaligned::new(id))?,
+                            access.get(&handle.db, &Unaligned::new(id))?,
                         )?.with_id(id);
                         let new_doc = Document::new(modify.apply(old_doc.get_data().clone()));
 
                         access
-                            .put(&self.db, &Unaligned::new(id), &new_doc.into_raw()?, f)
+                            .put(&handle.db, &Unaligned::new(id), &new_doc.into_raw()?, f)
                             .wrap_err()?;
 
                         (old_doc, new_doc)
@@ -218,20 +248,22 @@ impl Collection {
     /// Returns the number of affected documents.
     ///
     pub fn remove(&self, filter: Option<Filter>) -> Result<usize> {
+        let handle = self.handle();
+
         let found_ids = self.find_ids(filter)?;
 
         let mut count = 0;
         {
-            let txn = WriteTransaction::new(self.storage.clone())?;
+            let txn = WriteTransaction::new(handle.storage.clone())?;
             {
                 for id in found_ids {
                     let old_doc = {
                         let mut access = txn.access();
                         let old_doc = Document::<Value>::from_raw(
-                            access.get(&self.db, &Unaligned::new(id))?,
+                            access.get(&handle.db, &Unaligned::new(id))?,
                         )?.with_id(id);
 
-                        access.del_key(&self.db, &Unaligned::new(id)).wrap_err()?;
+                        access.del_key(&handle.db, &Unaligned::new(id)).wrap_err()?;
 
                         old_doc
                     };
@@ -264,7 +296,9 @@ impl Collection {
     {
         self.purge()?;
 
-        let txn = WriteTransaction::new(self.storage.clone())?;
+        let handle = self.handle();
+
+        let txn = WriteTransaction::new(handle.storage.clone())?;
         let f = PutFlags::empty();
         let mut count = 0;
 
@@ -277,7 +311,7 @@ impl Collection {
                     let mut access = txn.access();
 
                     access
-                        .put(&self.db, &Unaligned::new(id), &doc.into_raw()?, f)
+                        .put(&handle.db, &Unaligned::new(id), &doc.into_raw()?, f)
                         .wrap_err()?;
                 }
 
@@ -293,24 +327,28 @@ impl Collection {
     /// Remove all documents from the collection
     ///
     pub fn purge(&self) -> Result<()> {
-        let txn = WriteTransaction::new(self.storage.clone()).wrap_err()?;
+        let handle = self.handle();
+
+        let txn = WriteTransaction::new(handle.storage.clone()).wrap_err()?;
         let mut access = txn.access();
 
-        let indexes = self.indexes.read().wrap_err()?;
+        let indexes = handle.indexes.read().wrap_err()?;
         for index in indexes.iter() {
             index.purge(&mut access)?;
         }
 
-        access.clear_db(&self.db).wrap_err()
+        access.clear_db(&handle.db).wrap_err()
     }
 
     /// Checks the collection contains document with specified primary key
     pub fn has(&self, id: Primary) -> Result<bool> {
-        let txn = ReadTransaction::new(self.storage.clone()).wrap_err()?;
+        let handle = self.handle();
+
+        let txn = ReadTransaction::new(handle.storage.clone()).wrap_err()?;
         let access = txn.access();
 
         access
-            .get::<Unaligned<Primary>, [u8]>(&self.db, &Unaligned::new(id))
+            .get::<Unaligned<Primary>, [u8]>(&handle.db, &Unaligned::new(id))
             .to_opt()
             .map(|res| res != None)
             .wrap_err()
@@ -318,11 +356,13 @@ impl Collection {
 
     /// Get document from collection using primary key/identifier
     pub fn get<T: DeserializeOwned>(&self, id: Primary) -> Result<Option<Document<T>>> {
-        let txn = ReadTransaction::new(self.storage.clone()).wrap_err()?;
+        let handle = self.handle();
+
+        let txn = ReadTransaction::new(handle.storage.clone()).wrap_err()?;
         let access = txn.access();
 
         Ok(match access
-            .get::<Unaligned<Primary>, [u8]>(&self.db, &Unaligned::new(id))
+            .get::<Unaligned<Primary>, [u8]>(&handle.db, &Unaligned::new(id))
             .to_opt()
             .wrap_err()?
         {
@@ -343,12 +383,14 @@ impl Collection {
         let id = doc.get_id().unwrap();
         let doc = doc.into_gen()?;
 
-        let txn = WriteTransaction::new(self.storage.clone()).wrap_err()?;
+        let handle = self.handle();
+
+        let txn = WriteTransaction::new(handle.storage.clone()).wrap_err()?;
 
         let old_doc = {
             let mut access = txn.access();
             let old_doc =
-                if let Some(old_doc) = access.get(&self.db, &Unaligned::new(id)).to_opt()? {
+                if let Some(old_doc) = access.get(&handle.db, &Unaligned::new(id)).to_opt()? {
                     Some(Document::<Value>::from_raw(old_doc)?.with_id(id))
                 } else {
                     None
@@ -356,7 +398,7 @@ impl Collection {
 
             access
                 .put(
-                    &self.db,
+                    &handle.db,
                     &Unaligned::new(id),
                     &doc.into_raw()?,
                     PutFlags::empty(),
@@ -382,14 +424,17 @@ impl Collection {
 
     /// Delete document with specified primary key/identifier from the collection
     pub fn delete(&self, id: Primary) -> Result<bool> {
-        let txn = WriteTransaction::new(self.storage.clone()).wrap_err()?;
+        let handle = self.handle();
+
+        let txn = WriteTransaction::new(handle.storage.clone()).wrap_err()?;
 
         let old_doc = {
             let mut access = txn.access();
-            let old_doc = Document::<Value>::from_raw(access.get(&self.db, &Unaligned::new(id))?)?
-                .with_id(id);
+            let old_doc =
+                Document::<Value>::from_raw(access.get(&handle.db, &Unaligned::new(id))?)?
+                    .with_id(id);
 
-            access.del_key(&self.db, &Unaligned::new(id)).wrap_err()?;
+            access.del_key(&handle.db, &Unaligned::new(id)).wrap_err()?;
 
             old_doc
         };
@@ -407,8 +452,10 @@ impl Collection {
         old_doc: Option<&Document>,
         new_doc: Option<&Document>,
     ) -> Result<bool> {
+        let handle = self.handle();
+
         {
-            let indexes = self.indexes.read().wrap_err()?;
+            let indexes = handle.indexes.read().wrap_err()?;
             let mut access = txn.access();
 
             for index in indexes.iter() {
@@ -421,8 +468,10 @@ impl Collection {
 
     /// Get the last primary key/identifier of inserted document
     pub fn last_id(&self) -> Result<Primary> {
-        let txn = ReadTransaction::new(self.storage.clone()).wrap_err()?;
-        let mut cursor = txn.cursor(self.db.clone()).wrap_err()?;
+        let handle = self.handle();
+
+        let txn = ReadTransaction::new(handle.storage.clone()).wrap_err()?;
+        let mut cursor = txn.cursor(self.clone()).wrap_err()?;
         let access = txn.access();
 
         cursor
@@ -439,11 +488,18 @@ impl Collection {
 
     /// Get indexes info from the collection
     pub fn get_indexes(&self) -> Result<Vec<(Identifier, IndexKind, KeyType)>> {
-        let indexes = self.indexes.read().wrap_err()?;
+        let handle = self.handle();
+
+        let indexes = handle.indexes.read().wrap_err()?;
         Ok(indexes
             .iter()
-            .map(|index| (Identifier::from(&index.path), index.kind, index.key))
-            .collect())
+            .map(|index| {
+                (
+                    Identifier::from(index.path().to_owned()),
+                    index.kind(),
+                    index.key(),
+                )
+            }).collect())
     }
 
     /// Set indexes of collection
@@ -464,7 +520,7 @@ impl Collection {
         key: KeyType,
     ) -> Result<bool> {
         if let Some(index) = self.get_index(&path)? {
-            if index.kind == kind && index.key == key {
+            if index.kind() == kind && index.key() == key {
                 return Ok(false);
             } else {
                 self.drop_index(&path)?;
@@ -477,9 +533,12 @@ impl Collection {
     /// Checks the index for specified field exists for the collection
     pub fn has_index<P: AsRef<str>>(&self, path: P) -> Result<bool> {
         let path = path.as_ref();
-        let indexes = self.indexes.read().wrap_err()?;
 
-        Ok(indexes.iter().any(|index| index.path == path))
+        let handle = self.handle();
+
+        let indexes = handle.indexes.read().wrap_err()?;
+
+        Ok(indexes.iter().any(|index| index.path() == path))
     }
 
     /// Create index for the collection
@@ -491,29 +550,32 @@ impl Collection {
     ) -> Result<bool> {
         let path = path.as_ref();
 
+        let handle = self.handle();
+
         {
-            let indexes = self.indexes.read().wrap_err()?;
+            let indexes = handle.indexes.read().wrap_err()?;
             // search alive index
-            if let Some(_) = indexes.iter().find(|index| index.path == path) {
+            if let Some(_) = indexes.iter().find(|index| index.path() == path) {
                 return Ok(false);
             }
         }
 
         // create new index
         let index = Index::new(
-            self.storage.clone(),
-            self.storage
-                .enumerate(IndexDef::new(self.name.clone(), path, kind, key)),
-        ).map(Arc::new)?;
+            handle.storage.clone(),
+            handle
+                .storage
+                .enumerate(IndexDef::new(handle.name.clone(), path, kind, key)),
+        )?;
 
         {
             // fulfill index
-            let txn = WriteTransaction::new(self.storage.clone()).wrap_err()?;
+            let txn = WriteTransaction::new(handle.storage.clone()).wrap_err()?;
             {
                 let mut access = txn.access();
 
-                let txn2 = ReadTransaction::new(self.storage.clone()).wrap_err()?;
-                let cursor2 = txn2.cursor(self.db.clone()).wrap_err()?;
+                let txn2 = ReadTransaction::new(handle.storage.clone()).wrap_err()?;
+                let cursor2 = txn2.cursor(self.clone()).wrap_err()?;
                 let access2 = txn2.access();
 
                 for res in CursorIter::new(
@@ -533,7 +595,7 @@ impl Collection {
         }
 
         // add index to collection indexes
-        let mut indexes = self.indexes.write().wrap_err()?;
+        let mut indexes = handle.indexes.write().wrap_err()?;
         indexes.push(index);
 
         Ok(true)
@@ -543,15 +605,17 @@ impl Collection {
     pub fn drop_index<P: AsRef<str>>(&self, path: P) -> Result<bool> {
         let path = path.as_ref();
 
+        let handle = self.handle();
+
         let found_pos = {
-            let indexes = self.indexes.read().wrap_err()?;
-            indexes.iter().position(|index| index.path == path)
+            let indexes = handle.indexes.read().wrap_err()?;
+            indexes.iter().position(|index| index.path() == path)
         };
 
         Ok(if let Some(pos) = found_pos {
-            let mut indexes = self.indexes.write().wrap_err()?;
+            let mut indexes = handle.indexes.write().wrap_err()?;
             let index = indexes.remove(pos);
-            let txn = WriteTransaction::new(self.storage.clone())?;
+            let txn = WriteTransaction::new(handle.storage.clone())?;
             let mut access = txn.access();
             index.to_delete(&mut access)?;
             true
@@ -560,17 +624,20 @@ impl Collection {
         })
     }
 
-    pub(crate) fn get_index<P: AsRef<str>>(&self, path: P) -> Result<Option<Arc<Index>>> {
+    pub(crate) fn get_index<P: AsRef<str>>(&self, path: P) -> Result<Option<Index>> {
         let path = path.as_ref();
-        let indexes = self.indexes.read().wrap_err()?;
+
+        let handle = self.handle();
+
+        let indexes = handle.indexes.read().wrap_err()?;
 
         Ok(indexes
             .iter()
-            .find(|index| index.path == path)
+            .find(|index| index.path() == path)
             .map(Clone::clone))
     }
 
-    pub(crate) fn req_index<P: AsRef<str>>(&self, path: P) -> Result<Arc<Index>> {
+    pub(crate) fn req_index<P: AsRef<str>>(&self, path: P) -> Result<Index> {
         if let Some(index) = self.get_index(&path)? {
             Ok(index)
         } else {
@@ -579,17 +646,66 @@ impl Collection {
     }
 
     pub(crate) fn to_delete(&self) -> Result<()> {
-        let txn = WriteTransaction::new(self.storage.clone()).wrap_err()?;
+        let handle = self.handle();
+
+        let txn = WriteTransaction::new(handle.storage.clone()).wrap_err()?;
         let mut access = txn.access();
 
-        let indexes = self.indexes.read().wrap_err()?;
+        let indexes = handle.indexes.read().wrap_err()?;
         for index in indexes.iter() {
             index.purge(&mut access)?;
             index.to_delete(&mut access)?;
         }
 
-        self.db.delete_on_drop(true);
-        access.clear_db(&self.db).wrap_err()
+        handle.delete.store(true, AtomicOrdering::SeqCst);
+        access.clear_db(&handle.db).wrap_err()
+    }
+}
+
+impl Drop for Collection {
+    fn drop(&mut self) {
+        let data = replace(&mut self.0, None).unwrap();
+
+        if let Ok(CollectionData { db, delete, .. }) = Arc::try_unwrap(data) {
+            if delete.load(AtomicOrdering::SeqCst) {
+                if let Err(e) = db.delete() {
+                    eprintln!("Error when deleting collection db: {}", e);
+                }
+            }
+        }
+    }
+}
+
+impl Deref for Collection {
+    type Target = Database<'static>;
+
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        if let Some(data) = &self.0 {
+            &data.db
+        } else {
+            unreachable!()
+        }
+    }
+}
+
+unsafe impl ConstDeref for Collection {
+    type Target = Database<'static>;
+
+    #[inline]
+    fn const_deref(&self) -> &Self::Target {
+        if let Some(data) = &self.0 {
+            &data.db
+        } else {
+            unreachable!()
+        }
+    }
+}
+
+impl<'a> Into<Supercow<'a, Database<'a>>> for Collection {
+    fn into(self) -> Supercow<'a, Database<'a>> {
+        let this = self.clone();
+        Supercow::shared(this)
     }
 }
 
@@ -603,10 +719,10 @@ pub(crate) struct PrimaryIterator {
 impl PrimaryIterator {
     pub(crate) fn new(
         txn: Arc<ReadTransaction<'static>>,
-        db: WrappedDatabase,
+        coll: Collection,
         order: OrderKind,
     ) -> Result<Self> {
-        let cur = txn.cursor(db)?;
+        let cur = txn.cursor(coll)?;
 
         Ok(Self {
             txn,
@@ -650,20 +766,20 @@ impl Iterator for PrimaryIterator {
 ///
 pub struct DocumentsIterator<T> {
     storage: Storage,
-    db: WrappedDatabase,
+    coll: Collection,
     ids_iter: Box<Iterator<Item = Primary> + Send>,
     phantom_doc: PhantomData<T>,
 }
 
 impl<T> DocumentsIterator<T> {
-    pub(crate) fn new<I>(storage: Storage, db: WrappedDatabase, ids_iter: I) -> Result<Self>
+    pub(crate) fn new<I>(storage: Storage, coll: Collection, ids_iter: I) -> Result<Self>
     where
         I: IntoIterator<Item = Primary> + 'static,
         I::IntoIter: Send,
     {
         Ok(Self {
             storage,
-            db,
+            coll,
             ids_iter: Box::new(ids_iter.into_iter()),
             phantom_doc: PhantomData,
         })
@@ -682,7 +798,7 @@ where
             {
                 let access = txn.access();
                 access
-                    .get(&self.db, &Unaligned::new(id))
+                    .get(&self.coll, &Unaligned::new(id))
                     .wrap_err()
                     .and_then(Document::<T>::from_raw)
                     .map(|doc| doc.with_id(id))

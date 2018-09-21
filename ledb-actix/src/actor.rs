@@ -1,5 +1,4 @@
 use std::marker::PhantomData;
-use std::sync::Arc;
 use std::path::Path;
 use serde::{Serialize, de::DeserializeOwned};
 use ledb::{Storage as LeStorage, Result as LeResult};
@@ -8,13 +7,11 @@ use actix::{Actor, Addr, Message, SyncContext, SyncArbiter, Handler};
 pub use ledb::{Filter, Comp, Cond, Order, OrderKind, IndexKind, KeyType, KeyData, Modify, Action, Identifier, Primary, Document, DocumentsIterator, Value, Stats, Info};
 
 #[derive(Clone)]
-pub struct Storage {
-    db: Arc<LeStorage>,
-}
+pub struct Storage(LeStorage);
 
 impl Storage {
     pub fn new<P: AsRef<Path>>(path: P) -> LeResult<Self> {
-        Ok(Self { db: Arc::new(LeStorage::open(path)?) })
+        Ok(Storage(LeStorage::new(path)?))
     }
 
     pub fn start(self, threads: usize) -> Addr<Self> {
@@ -37,7 +34,7 @@ impl Handler<GetStats> for Storage {
     type Result = <GetStats as Message>::Result;
 
     fn handle(&mut self, _: GetStats, _: &mut Self::Context) -> Self::Result {
-        self.db.get_stats()
+        self.0.get_stats()
     }
 }
 
@@ -52,7 +49,7 @@ impl Handler<GetInfo> for Storage {
     type Result = <GetInfo as Message>::Result;
 
     fn handle(&mut self, _: GetInfo, _: &mut Self::Context) -> Self::Result {
-        self.db.get_info()
+        self.0.get_info()
     }
 }
 
@@ -69,7 +66,7 @@ impl Handler<GetCollections> for Storage {
     type Result = <GetCollections as Message>::Result;
 
     fn handle(&mut self, _: GetCollections, _: &mut Self::Context) -> Self::Result {
-        self.db.get_collections()
+        self.0.get_collections()
     }
 }
 
@@ -89,10 +86,10 @@ impl Handler<EnsureCollectionMsg> for Storage {
     type Result = <EnsureCollectionMsg as Message>::Result;
 
     fn handle(&mut self, EnsureCollectionMsg(name): EnsureCollectionMsg, _: &mut Self::Context) -> Self::Result {
-        Ok(if self.db.has_collection(&name)? {
+        Ok(if self.0.has_collection(&name)? {
             false
         } else {
-            self.db.collection(name)?;
+            self.0.collection(name)?;
             true
         })
     }
@@ -114,7 +111,7 @@ impl Handler<DropCollectionMsg> for Storage {
     type Result = <DropCollectionMsg as Message>::Result;
 
     fn handle(&mut self, DropCollectionMsg(collection): DropCollectionMsg, _: &mut Self::Context) -> Self::Result {
-        self.db.drop_collection(collection)
+        self.0.drop_collection(collection)
     }
 }
 
@@ -136,7 +133,7 @@ impl Handler<GetIndexesMsg> for Storage {
     type Result = <GetIndexesMsg as Message>::Result;
 
     fn handle(&mut self, GetIndexesMsg(collection): GetIndexesMsg, _: &mut Self::Context) -> Self::Result {
-        self.db.collection(collection)?.get_indexes()
+        self.0.collection(collection)?.get_indexes()
     }
 }
 
@@ -156,7 +153,7 @@ impl Handler<EnsureIndexMsg> for Storage {
     type Result = <EnsureIndexMsg as Message>::Result;
 
     fn handle(&mut self, EnsureIndexMsg(collection, field, kind, key): EnsureIndexMsg, _: &mut Self::Context) -> Self::Result {
-        self.db.collection(collection)?.ensure_index(field, kind, key)
+        self.0.collection(collection)?.ensure_index(field, kind, key)
     }
 }
 
@@ -176,7 +173,7 @@ impl Handler<DropIndexMsg> for Storage {
     type Result = <DropIndexMsg as Message>::Result;
 
     fn handle(&mut self, DropIndexMsg(collection, field): DropIndexMsg, _: &mut Self::Context) -> Self::Result {
-        self.db.collection(collection)?.drop_index(field)
+        self.0.collection(collection)?.drop_index(field)
     }
 }
 
@@ -196,7 +193,7 @@ impl<T: Serialize> Handler<InsertMsg<T>> for Storage {
     type Result = <InsertMsg<T> as Message>::Result;
 
     fn handle(&mut self, InsertMsg(collection, document): InsertMsg<T>, _: &mut Self::Context) -> Self::Result {
-        self.db.collection(collection)?.insert(&document)
+        self.0.collection(collection)?.insert(&document)
     }
 }
 
@@ -216,7 +213,7 @@ impl<T: DeserializeOwned + 'static> Handler<GetMsg<T>> for Storage {
     type Result = <GetMsg<T> as Message>::Result;
 
     fn handle(&mut self, GetMsg(collection, identifier, ..): GetMsg<T>, _: &mut Self::Context) -> Self::Result {
-        self.db.collection(collection)?.get(identifier)
+        self.0.collection(collection)?.get(identifier)
     }
 }
 
@@ -236,7 +233,7 @@ impl<T: Serialize> Handler<PutMsg<T>> for Storage {
     type Result = <PutMsg<T> as Message>::Result;
 
     fn handle(&mut self, PutMsg(collection, document): PutMsg<T>, _: &mut Self::Context) -> Self::Result {
-        self.db.collection(collection)?.put(&document)
+        self.0.collection(collection)?.put(&document)
     }
 }
 
@@ -256,7 +253,7 @@ impl Handler<DeleteMsg> for Storage {
     type Result = <DeleteMsg as Message>::Result;
 
     fn handle(&mut self, DeleteMsg(collection, id): DeleteMsg, _: &mut Self::Context) -> Self::Result {
-        self.db.collection(collection)?.delete(id)
+        self.0.collection(collection)?.delete(id)
     }
 }
 
@@ -276,7 +273,7 @@ impl Handler<UpdateMsg> for Storage {
     type Result = <UpdateMsg as Message>::Result;
 
     fn handle(&mut self, UpdateMsg(collection, filter, modify): UpdateMsg, _: &mut Self::Context) -> Self::Result {
-        self.db.collection(collection)?.update(filter, modify)
+        self.0.collection(collection)?.update(filter, modify)
     }
 }
 
@@ -296,7 +293,7 @@ impl Handler<RemoveMsg> for Storage {
     type Result = <RemoveMsg as Message>::Result;
 
     fn handle(&mut self, RemoveMsg(collection, filter): RemoveMsg, _: &mut Self::Context) -> Self::Result {
-        self.db.collection(collection)?.remove(filter)
+        self.0.collection(collection)?.remove(filter)
     }
 }
 
@@ -316,7 +313,7 @@ impl<T: DeserializeOwned + 'static> Handler<FindMsg<T>> for Storage {
     type Result = <FindMsg<T> as Message>::Result;
 
     fn handle(&mut self, FindMsg(collection, filter, order, ..): FindMsg<T>, _: &mut Self::Context) -> Self::Result {
-        self.db.collection(collection)?.find(filter, order)
+        self.0.collection(collection)?.find(filter, order)
     }
 }
 

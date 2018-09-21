@@ -162,7 +162,6 @@ extern crate serde_json;
 mod test;
 
 mod collection;
-mod database;
 mod document;
 mod enumerate;
 mod error;
@@ -188,13 +187,11 @@ pub use storage::{Info, Stats, Storage};
 pub use value::{KeyData, KeyType};
 
 use collection::CollectionDef;
-use database::WrappedDatabase;
 use enumerate::{Enumerable, Serial, SerialGenerator};
 use index::{Index, IndexDef};
 use pool::Pool;
 use selection::Selection;
-use storage::DatabaseDef;
-use storage::StorageData;
+use storage::{DatabaseDef, StorageData};
 
 #[cfg(test)]
 mod tests {

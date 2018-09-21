@@ -6,11 +6,15 @@ use lmdb::{
 };
 use ron::ser::to_string as to_db_name;
 use std::collections::HashSet;
+use std::mem::replace;
+use std::ops::Deref;
+use std::sync::atomic::{AtomicBool, Ordering as AtomicOrdering};
 use std::sync::Arc;
+use supercow::{ext::ConstDeref, Supercow};
 
 use super::{
     DatabaseDef, Document, Enumerable, KeyData, KeyType, OrderKind, Primary, Result, ResultWrap,
-    Serial, Storage, Value, WrappedDatabase,
+    Serial, Storage, Value,
 };
 use float::F64;
 
@@ -61,13 +65,18 @@ impl Enumerable for IndexDef {
     }
 }
 
-/// The index
-pub(crate) struct Index {
-    pub(crate) path: String,
-    pub(crate) kind: IndexKind,
-    pub(crate) key: KeyType,
-    db: WrappedDatabase,
+struct IndexData {
+    path: String,
+    kind: IndexKind,
+    key: KeyType,
+    db: Database<'static>,
+    // Remove marker
+    delete: AtomicBool,
 }
+
+/// Index for document field
+#[derive(Clone)]
+pub(crate) struct Index(Option<Arc<IndexData>>);
 
 impl Index {
     pub(crate) fn new(storage: Storage, def: IndexDef) -> Result<Self> {
@@ -98,15 +107,35 @@ impl Index {
             }
         };
 
-        let db =
-            WrappedDatabase::new(Database::open(storage, Some(&db_name), &db_opts).wrap_err()?);
+        let db = Database::open(storage, Some(&db_name), &db_opts).wrap_err()?;
 
-        Ok(Self {
+        Ok(Index(Some(Arc::new(IndexData {
             path,
             kind,
             key,
             db,
-        })
+            delete: AtomicBool::new(false),
+        }))))
+    }
+
+    fn handle(&self) -> &IndexData {
+        if let Some(handle) = &self.0 {
+            handle
+        } else {
+            unreachable!();
+        }
+    }
+
+    pub fn path(&self) -> &str {
+        &self.handle().path
+    }
+
+    pub fn kind(&self) -> IndexKind {
+        self.handle().kind
+    }
+
+    pub fn key(&self) -> KeyType {
+        self.handle().key
     }
 
     pub(crate) fn update_index(
@@ -133,22 +162,24 @@ impl Index {
             new_keys.difference(&old_keys),
         );
 
-        //println!("Update index {} --{:?} ++{:?}", &self.path, &old_keys, &new_keys);
+        let handle = self.handle();
+
+        //println!("Update index {} --{:?} ++{:?}", &handle.path, &old_keys, &new_keys);
 
         for key in old_keys {
             access
-                .del_item(&self.db, key.into_raw(), &Unaligned::new(id))
+                .del_item(&handle.db, key.into_raw(), &Unaligned::new(id))
                 .wrap_err()?;
         }
 
-        let f = match self.kind {
+        let f = match handle.kind {
             IndexKind::Unique => NOOVERWRITE,
             IndexKind::Duplicate => NODUPDATA,
         };
 
         for key in new_keys {
             access
-                .put(&self.db, key.into_raw(), &Unaligned::new(id), f)
+                .put(&handle.db, key.into_raw(), &Unaligned::new(id), f)
                 .wrap_err()?;
         }
 
@@ -157,8 +188,9 @@ impl Index {
 
     fn extract(&self, doc: &Document) -> HashSet<KeyData> {
         let mut keys = HashSet::new();
-        let path = self.path.split('.');
-        extract_field_values(doc.get_data(), self.key, &path, &mut keys);
+        let handle = self.handle();
+        let path = handle.path.split('.');
+        extract_field_values(doc.get_data(), handle.key, &path, &mut keys);
         keys
     }
 
@@ -169,12 +201,13 @@ impl Index {
         keys: I,
     ) -> Result<HashSet<Primary>> {
         let mut out = HashSet::new();
+        let handle = self.handle();
 
         for key in keys {
-            if let Some(key) = key.into_type(self.key) {
-                let mut cursor = txn.cursor(self.db.clone()).wrap_err()?;
+            if let Some(key) = key.into_type(handle.key) {
+                let mut cursor = txn.cursor(self.clone()).wrap_err()?;
 
-                match self.kind {
+                match handle.kind {
                     IndexKind::Unique => match cursor
                         .seek_k_both::<[u8], Unaligned<Primary>>(&access, key.into_raw())
                         .to_opt()
@@ -224,12 +257,13 @@ impl Index {
         end: Option<(&KeyData, bool)>,
     ) -> Result<HashSet<Primary>> {
         let mut out = HashSet::new();
+        let handle = self.handle();
 
-        let beg = beg.and_then(|(key, inc)| key.into_type(self.key).map(|key| (key, inc)));
-        let end = end.and_then(|(key, inc)| key.into_type(self.key).map(|key| (key, inc)));
-        let cursor = txn.cursor(self.db.clone()).wrap_err()?;
+        let beg = beg.and_then(|(key, inc)| key.into_type(handle.key).map(|key| (key, inc)));
+        let end = end.and_then(|(key, inc)| key.into_type(handle.key).map(|key| (key, inc)));
+        let cursor = txn.cursor(self.clone()).wrap_err()?;
 
-        match self.kind {
+        match handle.kind {
             IndexKind::Unique => {
                 for item in CursorIter::new(
                     MaybeOwned::Owned(cursor),
@@ -323,17 +357,66 @@ impl Index {
         txn: Arc<ReadTransaction<'static>>,
         order: OrderKind,
     ) -> Result<IndexIterator> {
-        IndexIterator::new(txn, self.db.clone(), order)
+        IndexIterator::new(txn, self.clone(), order)
     }
 
     pub(crate) fn purge(&self, access: &mut WriteAccessor) -> Result<()> {
-        access.clear_db(&self.db).wrap_err()
+        let handle = self.handle();
+        access.clear_db(&handle.db).wrap_err()
     }
 
     pub(crate) fn to_delete(&self, access: &mut WriteAccessor) -> Result<()> {
         self.purge(access)?;
-        self.db.delete_on_drop(true);
+        let handle = self.handle();
+        handle.delete.store(true, AtomicOrdering::SeqCst);
         Ok(())
+    }
+}
+
+impl Drop for Index {
+    fn drop(&mut self) {
+        let data = replace(&mut self.0, None).unwrap();
+
+        if let Ok(IndexData { db, delete, .. }) = Arc::try_unwrap(data) {
+            if delete.load(AtomicOrdering::SeqCst) {
+                if let Err(e) = db.delete() {
+                    eprintln!("Error when deleting index db: {}", e);
+                }
+            }
+        }
+    }
+}
+
+impl Deref for Index {
+    type Target = Database<'static>;
+
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        if let Some(data) = &self.0 {
+            &data.db
+        } else {
+            unreachable!()
+        }
+    }
+}
+
+unsafe impl ConstDeref for Index {
+    type Target = Database<'static>;
+
+    #[inline]
+    fn const_deref(&self) -> &Self::Target {
+        if let Some(data) = &self.0 {
+            &data.db
+        } else {
+            unreachable!()
+        }
+    }
+}
+
+impl<'a> Into<Supercow<'a, Database<'a>>> for Index {
+    fn into(self) -> Supercow<'a, Database<'a>> {
+        let this = self.clone();
+        Supercow::shared(this)
     }
 }
 
@@ -384,12 +467,8 @@ pub(crate) struct IndexIterator {
 }
 
 impl IndexIterator {
-    pub fn new(
-        txn: Arc<ReadTransaction<'static>>,
-        db: WrappedDatabase,
-        order: OrderKind,
-    ) -> Result<Self> {
-        let cur = txn.cursor(db)?;
+    pub fn new(txn: Arc<ReadTransaction<'static>>, coll: Index, order: OrderKind) -> Result<Self> {
+        let cur = txn.cursor(coll)?;
 
         Ok(Self {
             txn,

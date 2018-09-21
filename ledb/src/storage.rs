@@ -89,7 +89,7 @@ pub(crate) struct StorageData {
     path: PathBuf,
     env: Environment,
     gen: SerialGenerator,
-    collections: RwLock<Vec<Arc<Collection>>>,
+    collections: RwLock<Vec<Collection>>,
 }
 
 /// Storage of documents
@@ -147,7 +147,7 @@ impl Storage {
 
         *collections = db_def
             .into_iter()
-            .map(|(def, index_defs)| Collection::new(self.clone(), def, index_defs).map(Arc::new))
+            .map(|(def, index_defs)| Collection::new(self.clone(), def, index_defs))
             .collect::<Result<Vec<_>>>()?;
 
         Ok(())
@@ -163,14 +163,16 @@ impl Storage {
         let name = name.as_ref();
         let collections = self.0.collections.read().wrap_err()?;
         // search alive collection
-        Ok(collections.iter().any(|collection| collection.name == name))
+        Ok(collections
+            .iter()
+            .any(|collection| collection.name() == name))
     }
 
     /// Get collection for documents
     ///
     /// *Note*: The collection will be created automatically when does not exists.
     ///
-    pub fn collection<N: AsRef<str>>(&self, name: N) -> Result<Arc<Collection>> {
+    pub fn collection<N: AsRef<str>>(&self, name: N) -> Result<Collection> {
         let name = name.as_ref();
 
         {
@@ -178,7 +180,7 @@ impl Storage {
             // search alive collection
             if let Some(collection) = collections
                 .iter()
-                .find(|collection| collection.name == name)
+                .find(|collection| collection.name() == name)
             {
                 return Ok(collection.clone());
             }
@@ -189,7 +191,7 @@ impl Storage {
             self.clone(),
             self.enumerate(CollectionDef::new(name)),
             Vec::new(),
-        ).map(Arc::new)?;
+        )?;
 
         let mut collections = self.0.collections.write().wrap_err()?;
         collections.push(collection.clone());
@@ -204,7 +206,7 @@ impl Storage {
             let collections = self.0.collections.read().wrap_err()?;
             collections
                 .iter()
-                .position(|collection| collection.name == name)
+                .position(|collection| collection.name() == name)
         };
 
         Ok(if let Some(pos) = found_pos {
@@ -221,7 +223,7 @@ impl Storage {
         let collections = self.0.collections.read().wrap_err()?;
         Ok(collections
             .iter()
-            .map(|collection| collection.name.clone())
+            .map(|collection| collection.name().into())
             .collect())
     }
 
