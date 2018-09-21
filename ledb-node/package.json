@@ -1,0 +1,29 @@
+{
+  "name": "ledb",
+  "version": "0.1.0",
+  "description": "LEDB interface for NodeJS",
+  "main": "native/index.node",
+  "typings": "index.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/katyo/ledb"
+  },
+  "author": "Kayo <kayo@illumium.org>",
+  "license": "MIT",
+  "dependencies": {
+    "neon-cli": "^0.2"
+  },
+  "scripts": {
+    "install": "neon build",
+    "test": "mocha -r ts-node/register test/index.ts -R spec"
+  },
+  "devDependencies": {
+    "@types/fs-extra": "^5",
+    "@types/mocha": "^5",
+    "@types/node": "^8",
+    "fs-extra": "^7",
+    "mocha": "^5",
+    "ts-node": "^7",
+    "typescript": "^3"
+  }
+}

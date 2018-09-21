@@ -3,6 +3,7 @@
 members = [
   "ledb",
   "ledb-actix",
+  "ledb-node/native"
 ]
 
 [profile.release]

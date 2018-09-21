@@ -3,7 +3,13 @@ rust:
   - stable
   - beta
   - nightly
+node_js:
+  - "8"
+  - "10"
 matrix:
   allow_failures:
     - rust: nightly
   fast_finish: true
+script:
+  - cargo test --verbose --all --exclude ledb-node
+  - cd ledb-node && npm install && npm test

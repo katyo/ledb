@@ -1,0 +1,19 @@
+[package]
+name = "ledb-node"
+version = "0.1.0"
+authors = ["Kayo <kayo@illumium.org>"]
+license = "MIT"
+build = "build.rs"
+exclude = ["artifacts.json", "index.node"]
+
+[lib]
+name = "ledbnode"
+crate-type = ["cdylib"]
+
+[build-dependencies]
+neon-build = "0.2.0"
+
+[dependencies]
+ledb = { path = "../../ledb" }
+neon = "0.2.0"
+neon-serde = { git = "https://github.com/apendleton/neon-serde", branch = "oh-point-two" }
