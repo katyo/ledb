@@ -26,6 +26,7 @@ pub(crate) enum DatabaseDef {
     Index(IndexDef),
 }
 
+/// Storage stats data
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Stats {
     pub page_size: u32,
@@ -58,6 +59,7 @@ impl From<lmdb::Stat> for Stats {
     }
 }
 
+/// Storage info data
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Info {
     pub map_size: usize,
@@ -100,11 +102,14 @@ pub(crate) struct StorageData {
 pub struct Storage(Arc<StorageData>);
 
 impl Storage {
-    /// Open documents storage
+    /// Open documents storage using path to the database in filesystem
     ///
     /// When storage does not exists it will be created automatically.
     ///
     /// On opening storage the existing collections and indexes will be restored automatically.
+    ///
+    /// You can open multiple storages using same path, actually all of them will use same storage instance.
+    /// Also you can clone storage instance, share it and and send it to another threads.
     ///
     pub fn new<P: AsRef<Path>>(path: P) -> Result<Self> {
         let path = realpath(path.as_ref())?;
@@ -160,7 +165,7 @@ impl Storage {
         self.0.gen.enumerate(data)
     }
 
-    /// Check collection exists
+    /// Checks if the collection exists
     ///
     pub fn has_collection<N: AsRef<str>>(&self, name: N) -> Result<bool> {
         let name = name.as_ref();
@@ -173,7 +178,7 @@ impl Storage {
 
     /// Get collection for documents
     ///
-    /// *Note*: The collection will be created automatically when does not exists.
+    /// *Note*: The collection will be created automatically when is does not exists.
     ///
     pub fn collection<N: AsRef<str>>(&self, name: N) -> Result<Collection> {
         let name = name.as_ref();

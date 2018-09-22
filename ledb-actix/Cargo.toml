@@ -8,7 +8,7 @@ repository = "https://github.com/katyo/ledb"
 documentation = "https://docs.rs/ledb-actix"
 homepage = "https://github.com/katyo/ledb"
 keywords = ["actor", "document storage", "persistence", "json", "cbor", "lmdb", "btree"]
-categories = ["database", "web"]
+categories = ["database", "web", "actor"]
 description = "LEDB Actor for Actix actor framework and actix-web storage server"
 
 [badges]

@@ -17,6 +17,7 @@
 ```rust
 extern crate serde;
 #[macro_use] extern crate serde_derive;
+// This allows inserting JSON documents
 #[macro_use] extern crate serde_json;
 #[macro_use] extern crate ledb;
 
@@ -33,42 +34,82 @@ fn main() {
     let db_path = ".test_dbs/my_temp_db";
     let _ = std::fs::remove_dir_all(&db_path);
 
+    // Open storage
     let storage = Storage::new(&db_path).unwrap();
     
+    // Get collection
     let collection = storage.collection("my-docs").unwrap();
     
+    // Ensure indexes
     query!(ensure index for collection
         title String unique
         tag String
         timestamp Int unique
     ).unwrap();
     
+    // Insert JSON document
     let first_id = query!(insert into collection {
         "title": "First title",
         "tag": ["some tag", "other tag"],
         "timestamp": 1234567890,
     }).unwrap();
     
+    // Insert typed document
     let second_id = collection.insert(&MyDoc {
         title: "Second title".into(),
         tag: vec![],
         timestamp: 1234567657,
     }).unwrap();
 
+    // Find documents
     let found_docs = query!(
         find MyDoc in collection
         where title == "First title"
     ).unwrap().collect::<Result<Vec<_>, _>>().unwrap();
     
+    // Update documents
     let n_affected = query!(
         update collection modify [title = "Other title"]
         where title == "First title"
     ).unwrap();
 
+    // Find documents with descending ordering
     let found_docs = query!(
         find MyDoc in collection order ^
     ).unwrap().collect::<Result<Vec<_>, _>>().unwrap();
+
+    // Remove documents
+    let n_affected = query!(
+        remove collection where title == "Other title"
+    ).unwrap();
 }
+```
+
+## Field names
+
+Field name is a sequence of dot-separated identifiers which represents nesting of value in document.
+
+For example:
+
+```ignore
+{
+    "a": "abc",
+    "b": {
+        "c": 11
+    },
+    "d": [
+      "a"
+    ]
+}
+```
+
+```ignore
+a == "abc"
+a += "def"
+b.c > 10
+b.c += 3
+d == "a"
+d[-1..] += ["b", "c"]
 ```
 
 ## Supported key types

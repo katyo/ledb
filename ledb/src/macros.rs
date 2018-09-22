@@ -50,7 +50,7 @@ macro_rules! filter_impl {
     (@parse ) => (
         (None as Option<$crate::Filter>)
     );
-    
+
     // start || condition
     (@parse_or [ $($conds:tt)* ] $token:tt $($tokens:tt)*) => (
         filter_impl!(@parse_or_cond [ $($conds)* ] [ $token ] $($tokens)*)
@@ -59,7 +59,7 @@ macro_rules! filter_impl {
     (@parse_or [ $($conds:tt)+ ]) => (
         filter_impl!(@process_or $($conds)+)
     );
-    
+
     // end operand of || condition
     (@parse_or_cond [ $($conds:tt)* ] [ $($cond:tt)+ ] || $($tokens:tt)*) => (
         filter_impl!(@parse_or [ $($conds)* [ $($cond)+ ] ] $($tokens)*)
@@ -81,7 +81,7 @@ macro_rules! filter_impl {
     (@process_or $($cond:tt)+) => (
         $crate::Filter::Cond($crate::Cond::Or(vec![$(filter_impl!(@parse_and_wrapped $cond)),+]))
     );
-    
+
     (@parse_and_wrapped [ $($tokens:tt)+ ]) => (
         filter_impl!(@parse_and [] $($tokens)+)
     );
@@ -116,7 +116,7 @@ macro_rules! filter_impl {
     (@process_and $($cond:tt)+) => (
         $crate::Filter::Cond($crate::Cond::And(vec![$(filter_impl!(@parse_not_wrapped $cond)),+]))
     );
-    
+
     (@parse_not_wrapped [ $($tokens:tt)+ ]) => (
         filter_impl!(@parse_not $($tokens)+)
     );
@@ -313,10 +313,10 @@ macro_rules! modify {
 macro_rules! modify_impl {
     // start paring rule
     (@start $($tokens:tt)+) => ( modify_impl!(@parse [] $($tokens)*) );
-    
+
     // none modifications
     (@start ) => ( $crate::Modify::default() );
-    
+
     // parsing
     (@parse [ $($actions:tt)* ] , $($tokens:tt)*) => ( // skip commas at top level
         modify_impl!(@parse [ $($actions)* ] $($tokens)*)
@@ -538,7 +538,7 @@ macro_rules! query_impl {
         $coll.ensure_index(field_name!($($field).+), $crate::IndexKind::$kind, $crate::KeyType::$type)?;
         query_impl!(@index_fields $coll, $($tokens)*)
     );
-    
+
     (@index_fields $coll:expr, ) => ();
     // comma separated unique
     (@index_fields $coll:expr, $($field:ident).+ $type:ident unique, $($tokens:tt)*) => (
@@ -564,7 +564,7 @@ macro_rules! query_impl {
     (@index_fields $coll:expr, $($field:ident).+ $type:ident $($tokens:tt)*) => (
         query_impl!(@index_impl $coll, $($field).+, Duplicate, $type, $($tokens)*)
     );
-    
+
     // find
     (@find $type:ty, $coll:expr,) => (
         query_impl!(@find_impl $type, $coll, [] [])
@@ -661,18 +661,30 @@ mod test {
         fn empty() {
             assert_eq!(filter!(), json_val!(null));
         }
-        
+
         #[test]
         fn comp_eq() {
             assert_eq!(filter!(f == 123), json_val!({ "f": { "$eq": 123 } }));
-            assert_eq!(filter!(f != 123), json_val!({ "$not": { "f": { "$eq": 123 } } }));
-            assert_eq!(filter!(f != "abc"), json_val!({ "$not": { "f": { "$eq": "abc" } } }));
+            assert_eq!(
+                filter!(f != 123),
+                json_val!({ "$not": { "f": { "$eq": 123 } } })
+            );
+            assert_eq!(
+                filter!(f != "abc"),
+                json_val!({ "$not": { "f": { "$eq": "abc" } } })
+            );
         }
 
         #[test]
         fn comp_in() {
-            assert_eq!(filter!(f in [1, 2, 3]), json_val!({ "f": { "$in": [1, 2, 3] } }));
-            assert_eq!(filter!(f in ["a", "b", "c"]), json_val!({ "f": { "$in": ["a", "b", "c"] } }));
+            assert_eq!(
+                filter!(f in [1, 2, 3]),
+                json_val!({ "f": { "$in": [1, 2, 3] } })
+            );
+            assert_eq!(
+                filter!(f in ["a", "b", "c"]),
+                json_val!({ "f": { "$in": ["a", "b", "c"] } })
+            );
         }
 
         #[test]
@@ -697,15 +709,39 @@ mod test {
 
         #[test]
         fn comp_bw() {
-            assert_eq!(filter!(f in 12..34), json_val!({ "f": { "$bw": [12, true, 34, true] } }));
-            assert_eq!(filter!(f <in> 12..34), json_val!({ "f": { "$bw": [12, false, 34, false] } }));
-            assert_eq!(filter!(f <in 12..34), json_val!({ "f": { "$bw": [12, false, 34, true] } }));
-            assert_eq!(filter!(f in> 12..34), json_val!({ "f": { "$bw": [12, true, 34, false] } }));
+            assert_eq!(
+                filter!(f in 12..34),
+                json_val!({ "f": { "$bw": [12, true, 34, true] } })
+            );
+            assert_eq!(
+                filter!(f <in> 12..34),
+                json_val!({ "f": { "$bw": [12, false, 34, false] } })
+            );
+            assert_eq!(
+                filter!(f <in 12..34),
+                json_val!({ "f": { "$bw": [12, false, 34, true] } })
+            );
+            assert_eq!(
+                filter!(f in> 12..34),
+                json_val!({ "f": { "$bw": [12, true, 34, false] } })
+            );
 
-            assert_eq!(filter!(f in -12..-34), json_val!({ "f": { "$bw": [-12, true, -34, true] } }));
-            assert_eq!(filter!(f <in> -12..-34), json_val!({ "f": { "$bw": [-12, false, -34, false] } }));
-            assert_eq!(filter!(f <in -12..-34), json_val!({ "f": { "$bw": [-12, false, -34, true] } }));
-            assert_eq!(filter!(f in> -12..-34), json_val!({ "f": { "$bw": [-12, true, -34, false] } }));
+            assert_eq!(
+                filter!(f in -12..-34),
+                json_val!({ "f": { "$bw": [-12, true, -34, true] } })
+            );
+            assert_eq!(
+                filter!(f <in> -12..-34),
+                json_val!({ "f": { "$bw": [-12, false, -34, false] } })
+            );
+            assert_eq!(
+                filter!(f <in -12..-34),
+                json_val!({ "f": { "$bw": [-12, false, -34, true] } })
+            );
+            assert_eq!(
+                filter!(f in> -12..-34),
+                json_val!({ "f": { "$bw": [-12, true, -34, false] } })
+            );
         }
 
         #[test]
@@ -720,29 +756,44 @@ mod test {
 
         #[test]
         fn cond_and() {
-            assert_eq!(filter!(a == 3 && b >= 1), json_val!({ "$and": [ { "a": { "$eq": 3 } }, { "b": { "$ge": 1 } } ] }));
+            assert_eq!(
+                filter!(a == 3 && b >= 1),
+                json_val!({ "$and": [ { "a": { "$eq": 3 } }, { "b": { "$ge": 1 } } ] })
+            );
         }
 
         #[test]
         fn cond_or() {
-            assert_eq!(filter!(a == "abc" || b <in> 12..34), json_val!({ "$or": [ { "a": { "$eq": "abc" } }, { "b": { "$bw": [12, false, 34, false] } } ] }));
+            assert_eq!(
+                filter!(a == "abc" || b <in> 12..34),
+                json_val!({ "$or": [ { "a": { "$eq": "abc" } }, { "b": { "$bw": [12, false, 34, false] } } ] })
+            );
         }
 
         #[test]
         fn cond_not_and() {
-            assert_eq!(filter!(!(a == "abc" && b <in> 12..34)), json_val!({ "$not": { "$and": [ { "a": { "$eq": "abc" } }, { "b": { "$bw": [12, false, 34, false] } } ] } }));
+            assert_eq!(
+                filter!(!(a == "abc" && b <in> 12..34)),
+                json_val!({ "$not": { "$and": [ { "a": { "$eq": "abc" } }, { "b": { "$bw": [12, false, 34, false] } } ] } })
+            );
         }
 
         #[test]
         fn cond_and_not() {
-            assert_eq!(filter!(a != "abc" && !(b <in> 12..34)), json_val!({ "$and": [ { "$not": { "a": { "$eq": "abc" } } }, { "$not": { "b": { "$bw": [12, false, 34, false] } } } ] }));
+            assert_eq!(
+                filter!(a != "abc" && !(b <in> 12..34)),
+                json_val!({ "$and": [ { "$not": { "a": { "$eq": "abc" } } }, { "$not": { "b": { "$bw": [12, false, 34, false] } } } ] })
+            );
         }
 
         #[test]
         fn cond_and_or() {
             let b_edge = 10;
-            
-            assert_eq!(filter!(a in [1, 2, 3] && (b > b_edge || b < -b_edge)), json_val!({ "$and": [ { "a": { "$in": [1, 2, 3] } }, { "$or": [ { "b": { "$gt": 10 } }, { "b": { "$lt": -10 } } ] } ] }));
+
+            assert_eq!(
+                filter!(a in [1, 2, 3] && (b > b_edge || b < -b_edge)),
+                json_val!({ "$and": [ { "a": { "$in": [1, 2, 3] } }, { "$or": [ { "b": { "$gt": 10 } }, { "b": { "$lt": -10 } } ] } ] })
+            );
         }
 
         #[test]
@@ -752,42 +803,50 @@ mod test {
 
         #[test]
         fn or_nested_and() {
-            assert_eq!(filter!(a == 1 || !b == "abc" && c < 5),
-                       json_val!({ "$or": [
+            assert_eq!(
+                filter!(a == 1 || !b == "abc" && c < 5),
+                json_val!({ "$or": [
                            { "a": { "$eq": 1 } },
                            { "$and": [
                                { "$not": { "b": { "$eq": "abc" } } },
                                { "c": { "$lt": 5 } }
                            ] }
-                       ] }));
-            assert_eq!(filter!(a == 1 && !b == "abc" || c < 5),
-                       json_val!({ "$or": [
+                       ] })
+            );
+            assert_eq!(
+                filter!(a == 1 && !b == "abc" || c < 5),
+                json_val!({ "$or": [
                            { "$and": [
                                { "a": { "$eq": 1 } },
                                { "$not": { "b": { "$eq": "abc" } } }
                            ] },
                            { "c": { "$lt": 5 } }
-                       ] }));
+                       ] })
+            );
         }
 
         #[test]
         fn and_nested_or() {
-            assert_eq!(filter!((a == 1 || !b == "abc") && c < 5),
-                       json_val!({ "$and": [
+            assert_eq!(
+                filter!((a == 1 || !b == "abc") && c < 5),
+                json_val!({ "$and": [
                            { "$or": [
                                { "a": { "$eq": 1 } },
                                { "$not": { "b": { "$eq": "abc" } } }
                            ] },
                            { "c": { "$lt": 5 } }
-                       ] }));
-            assert_eq!(filter!(a == 1 && (!b == "abc" || c < 5)),
-                       json_val!({ "$and": [
+                       ] })
+            );
+            assert_eq!(
+                filter!(a == 1 && (!b == "abc" || c < 5)),
+                json_val!({ "$and": [
                            { "a": { "$eq": 1 } },
                            { "$or": [
                                { "$not": { "b": { "$eq": "abc" } } },
                                { "c": { "$lt": 5 } }
                            ] }
-                       ] }));
+                       ] })
+            );
         }
     }
 
@@ -798,25 +857,25 @@ mod test {
         fn default() {
             assert_eq!(order!(), json_val!("$asc"));
         }
-        
+
         #[test]
         fn primary_asc() {
             assert_eq!(order!(>), json_val!("$asc"));
             assert_eq!(order!(v), json_val!("$asc"));
         }
-        
+
         #[test]
         fn primary_desc() {
             assert_eq!(order!(<), json_val!("$desc"));
             assert_eq!(order!(^), json_val!("$desc"));
         }
-        
+
         #[test]
         fn field_asc() {
             assert_eq!(order!(field >), json_val!({ "field": "$asc" }));
             assert_eq!(order!(field v), json_val!({ "field": "$asc" }));
         }
-        
+
         #[test]
         fn field_desc() {
             assert_eq!(order!(a.b.c <), json_val!({ "a.b.c": "$desc" }));
@@ -831,70 +890,127 @@ mod test {
         fn empty() {
             assert_eq!(modify!(), json_val!({}));
         }
-        
+
         #[test]
         fn set() {
             assert_eq!(modify!(a = 1u32), json_val!({ "a": { "$set": 1 } }));
-            assert_eq!(modify!(a = 123u32, b.c = "abc"), json_val!({ "a": { "$set": 123 }, "b.c": { "$set": "abc" } }));
-            assert_eq!(modify!(
+            assert_eq!(
+                modify!(a = 123u32, b.c = "abc"),
+                json_val!({ "a": { "$set": 123 }, "b.c": { "$set": "abc" } })
+            );
+            assert_eq!(
+                modify!(
                 a = 123u32;
                 b.c = "abc";
-            ), json_val!({ "a": { "$set": 123 }, "b.c": { "$set": "abc" } }));
+            ),
+                json_val!({ "a": { "$set": 123 }, "b.c": { "$set": "abc" } })
+            );
         }
-        
+
         #[test]
         fn delete() {
             assert_eq!(modify!(-field), json_val!({ "field": "$delete" }));
-            assert_eq!(modify!(-field, -other.field), json_val!({ "field": "$delete", "other.field": "$delete" }));
+            assert_eq!(
+                modify!(-field, -other.field),
+                json_val!({ "field": "$delete", "other.field": "$delete" })
+            );
         }
-        
+
         #[test]
         fn add() {
-            assert_eq!(modify!(field += 123u32), json_val!({ "field": { "$add": 123 } }));
-            assert_eq!(modify!(field += 123u32, other.field += "abc"), json_val!({ "field": { "$add": 123 }, "other.field": { "$add": "abc" } }));
+            assert_eq!(
+                modify!(field += 123u32),
+                json_val!({ "field": { "$add": 123 } })
+            );
+            assert_eq!(
+                modify!(field += 123u32, other.field += "abc"),
+                json_val!({ "field": { "$add": 123 }, "other.field": { "$add": "abc" } })
+            );
         }
 
         #[test]
         fn sub() {
-            assert_eq!(modify!(field -= 123u32), json_val!({ "field": { "$sub": 123 } }));
-            assert_eq!(modify!(field -= 123u32, other.field -= "abc"), json_val!({ "field": { "$sub": 123 }, "other.field": { "$sub": "abc" } }));
+            assert_eq!(
+                modify!(field -= 123u32),
+                json_val!({ "field": { "$sub": 123 } })
+            );
+            assert_eq!(
+                modify!(field -= 123u32, other.field -= "abc"),
+                json_val!({ "field": { "$sub": 123 }, "other.field": { "$sub": "abc" } })
+            );
         }
-        
+
         #[test]
         fn mul() {
-            assert_eq!(modify!(field *= 123u32), json_val!({ "field": { "$mul": 123 } }));
-            assert_eq!(modify!(field *= 123u32, other.field *= "abc"), json_val!({ "field": { "$mul": 123 }, "other.field": { "$mul": "abc" } }));
+            assert_eq!(
+                modify!(field *= 123u32),
+                json_val!({ "field": { "$mul": 123 } })
+            );
+            assert_eq!(
+                modify!(field *= 123u32, other.field *= "abc"),
+                json_val!({ "field": { "$mul": 123 }, "other.field": { "$mul": "abc" } })
+            );
         }
 
         #[test]
         fn div() {
-            assert_eq!(modify!(field /= 123u32), json_val!({ "field": { "$div": 123 } }));
-            assert_eq!(modify!(field /= 123u32, other.field /= "abc"), json_val!({ "field": { "$div": 123 }, "other.field": { "$div": "abc" } }));
+            assert_eq!(
+                modify!(field /= 123u32),
+                json_val!({ "field": { "$div": 123 } })
+            );
+            assert_eq!(
+                modify!(field /= 123u32, other.field /= "abc"),
+                json_val!({ "field": { "$div": 123 }, "other.field": { "$div": "abc" } })
+            );
         }
 
         #[test]
         fn toggle() {
             assert_eq!(modify!(!field), json_val!({ "field": "$toggle" }));
-            assert_eq!(modify!(!field, !other.field), json_val!({ "field": "$toggle", "other.field": "$toggle" }));
-            assert_eq!(modify!(!field; !field), json_val!({ "field": ["$toggle", "$toggle"] }));
+            assert_eq!(
+                modify!(!field, !other.field),
+                json_val!({ "field": "$toggle", "other.field": "$toggle" })
+            );
+            assert_eq!(
+                modify!(!field; !field),
+                json_val!({ "field": ["$toggle", "$toggle"] })
+            );
         }
 
         #[test]
         fn replace() {
-            assert_eq!(modify!(field ~= "abc" "def"), json_val!({ "field": { "$replace": ["abc", "def"] } }));
-            assert_eq!(modify!(field ~= "abc" "def", other.field ~= "april" "may"), json_val!({ "field": { "$replace": ["abc", "def"] }, "other.field": { "$replace": ["april", "may"] } }));
+            assert_eq!(
+                modify!(field ~= "abc" "def"),
+                json_val!({ "field": { "$replace": ["abc", "def"] } })
+            );
+            assert_eq!(
+                modify!(field ~= "abc" "def", other.field ~= "april" "may"),
+                json_val!({ "field": { "$replace": ["abc", "def"] }, "other.field": { "$replace": ["april", "may"] } })
+            );
         }
-        
+
         #[test]
         fn splice() {
-            assert_eq!(modify!(-field[1..2]), json_val!({ "field": { "$splice": [1, 2] } }));
-            
-            assert_eq!(modify!(field[1..2] = ["a", "b", "c"]), json_val!({ "field": { "$splice": [1, 2, "a", "b", "c"] } }));
-        
+            assert_eq!(
+                modify!(-field[1..2]),
+                json_val!({ "field": { "$splice": [1, 2] } })
+            );
+
+            assert_eq!(
+                modify!(field[1..2] = ["a", "b", "c"]),
+                json_val!({ "field": { "$splice": [1, 2, "a", "b", "c"] } })
+            );
+
             let ins = [1u8, 2, 3];
-            assert_eq!(modify!(other.field[-1..0] = ins), json_val!({ "other.field": { "$splice": [-1, 0, 1, 2, 3] } }));
-            
-            assert_eq!(modify!(-field[..]), json_val!({ "field": { "$splice": [0, -1] } }));
+            assert_eq!(
+                modify!(other.field[-1..0] = ins),
+                json_val!({ "other.field": { "$splice": [-1, 0, 1, 2, 3] } })
+            );
+
+            assert_eq!(
+                modify!(-field[..]),
+                json_val!({ "field": { "$splice": [0, -1] } })
+            );
         }
 
         #[test]
@@ -904,11 +1020,20 @@ mod test {
                 subfield: bool,
                 other: u8,
             }
-            
-            let extra = Extra { subfield: true, other: 123 };
-            assert_eq!(modify!(field ~= extra), json_val!({ "field": { "$merge": { "subfield": true, "other": 123 } } }));
-            
-            assert_eq!(modify!(field ~= { "subfield": true, "other": 123 }), json_val!({ "field": { "$merge": { "subfield": true, "other": 123 } } }));
+
+            let extra = Extra {
+                subfield: true,
+                other: 123,
+            };
+            assert_eq!(
+                modify!(field ~= extra),
+                json_val!({ "field": { "$merge": { "subfield": true, "other": 123 } } })
+            );
+
+            assert_eq!(
+                modify!(field ~= { "subfield": true, "other": 123 }),
+                json_val!({ "field": { "$merge": { "subfield": true, "other": 123 } } })
+            );
         }
     }
 }

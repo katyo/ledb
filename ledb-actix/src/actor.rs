@@ -4,16 +4,25 @@ use serde::{Serialize, de::DeserializeOwned};
 use ledb::{Storage as LeStorage, Result as LeResult};
 use actix::{Actor, Addr, Message, SyncContext, SyncArbiter, Handler};
 
-pub use ledb::{Filter, Comp, Cond, Order, OrderKind, IndexKind, KeyType, KeyData, Modify, Action, Identifier, Primary, Document, DocumentsIterator, Value, Stats, Info};
+use super::{
+    Document, DocumentsIterator, Filter, Identifier, IndexKind, Info,
+    KeyType, Modify, Order, Primary, Stats,
+};
 
+/// Storage actor
 #[derive(Clone)]
 pub struct Storage(LeStorage);
 
 impl Storage {
+    /// Instantiate new storage actor using path to the database in filesystem
+    ///
+    /// You can create multiple storage adapters using same path, actually all of them will use same storage instance.
+    ///
     pub fn new<P: AsRef<Path>>(path: P) -> LeResult<Self> {
         Ok(Storage(LeStorage::new(path)?))
     }
 
+    /// Start the actor with number of threads
     pub fn start(self, threads: usize) -> Addr<Self> {
         SyncArbiter::start(threads, move || self.clone())
     }
@@ -70,7 +79,7 @@ impl Handler<GetCollections> for Storage {
     }
 }
 
-/// Ensure collection for collection
+/// Ensure collection in storage
 #[allow(non_snake_case)]
 pub fn EnsureCollection<C: Into<Identifier>>(coll: C) -> EnsureCollectionMsg {
     EnsureCollectionMsg(coll.into())
@@ -95,7 +104,7 @@ impl Handler<EnsureCollectionMsg> for Storage {
     }
 }
 
-/// Drop collection
+/// Drop collection from storage
 #[allow(non_snake_case)]
 pub fn DropCollection<C: Into<Identifier>>(coll: C) -> DropCollectionMsg {
     DropCollectionMsg(coll.into())
@@ -115,7 +124,7 @@ impl Handler<DropCollectionMsg> for Storage {
     }
 }
 
-/// Get indexes
+/// Get indexes of collection
 #[allow(non_snake_case)]
 pub fn GetIndexes<C: Into<Identifier>>(coll: C) -> GetIndexesMsg {
     GetIndexesMsg(coll.into())
@@ -137,7 +146,7 @@ impl Handler<GetIndexesMsg> for Storage {
     }
 }
 
-/// Ensure index for collection
+/// Ensure new index for collection
 #[allow(non_snake_case)]
 pub fn EnsureIndex<C: Into<Identifier>, F: Into<Identifier>>(coll: C, field: F, kind: IndexKind, key: KeyType) -> EnsureIndexMsg {
     EnsureIndexMsg(coll.into(), field.into(), kind, key)
@@ -157,7 +166,7 @@ impl Handler<EnsureIndexMsg> for Storage {
     }
 }
 
-/// Drop index of collection
+/// Drop spicific index from collection
 #[allow(non_snake_case)]
 pub fn DropIndex<C: Into<Identifier>, F: Into<Identifier>>(coll: C, field: F) -> DropIndexMsg {
     DropIndexMsg(coll.into(), field.into())
