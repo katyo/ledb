@@ -7,13 +7,14 @@ build = "build.rs"
 exclude = ["artifacts.json", "index.node"]
 
 [lib]
-name = "ledbnode"
+name = "ledb_node"
 crate-type = ["cdylib"]
 
 [build-dependencies]
 neon-build = "0.2.0"
 
 [dependencies]
-ledb = { path = "../../ledb" }
+#ledb = { path = "../../ledb" }
+ledb = { git = "https://github.com/katyo/ledb" }
 neon = "0.2.0"
 neon-serde = { git = "https://github.com/apendleton/neon-serde", branch = "oh-point-two" }
