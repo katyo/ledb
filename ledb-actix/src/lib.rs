@@ -84,7 +84,14 @@ fn main() {
 */
 
 extern crate actix;
+
+#[cfg(test)]
+#[macro_use(_query_impl, _query_extr)]
 extern crate ledb;
+
+#[cfg(not(test))]
+extern crate ledb;
+
 extern crate serde;
 
 #[cfg(any(test, feature = "web"))]
@@ -108,7 +115,7 @@ extern crate serde_with;
 extern crate actix_web;
 
 mod actor;
-
+mod macros;
 #[cfg(feature = "web")]
 mod scope;
 

@@ -1,11 +1,15 @@
-use std::ops::Deref;
 use std::collections::HashMap;
-use std::result::Result as StdResult;
 use std::iter::once;
+use std::ops::Deref;
+use std::result::Result as StdResult;
 
-use serde::{Serialize, ser::{Serializer, SerializeMap}, Deserialize, de::{Deserializer, Error as DeError}};
-use serde_cbor::{ObjectKey};
-use regex::{Regex};
+use regex::Regex;
+use serde::{
+    de::{Deserializer, Error as DeError},
+    ser::{SerializeMap, Serializer},
+    Deserialize, Serialize,
+};
+use serde_cbor::ObjectKey;
 
 use super::{Identifier, Value};
 
@@ -111,10 +115,18 @@ enum SingleOrMultiple<T> {
 impl<'de> Deserialize<'de> for Modify {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> StdResult<Self, D::Error> {
         let map: HashMap<String, SingleOrMultiple<Action>> = HashMap::deserialize(deserializer)?;
-        Ok(Modify(map.into_iter().map(|(field, actions)| (field.into(), match actions {
-            SingleOrMultiple::Multiple(v) => v,
-            SingleOrMultiple::Single(v) => vec![v],
-        })).collect()))
+        Ok(Modify(
+            map.into_iter()
+                .map(|(field, actions)| {
+                    (
+                        field.into(),
+                        match actions {
+                            SingleOrMultiple::Multiple(v) => v,
+                            SingleOrMultiple::Single(v) => vec![v],
+                        },
+                    )
+                }).collect(),
+        ))
     }
 }
 
@@ -161,7 +173,7 @@ fn modify_value(mods: &HashMap<Identifier, Vec<Action>>, pfx: &str, mut val: Val
             };
         }
     }
-    
+
     match val {
         U64(_) => modify_primitive(mods, pfx, val),
         I64(_) => modify_primitive(mods, pfx, val),
@@ -180,25 +192,43 @@ fn modify_value(mods: &HashMap<Identifier, Vec<Action>>, pfx: &str, mut val: Val
                                     vec.push(elm.clone());
                                 }
                             }
-                        },
+                        }
                         Sub(Array(elms)) => {
                             for elm in elms {
                                 if let Some(idx) = vec.iter().position(|e| e == elm) {
                                     vec.remove(idx);
                                 }
                             }
-                        },
+                        }
                         Splice(off, del, ins) => {
-                            let beg = usize::min(if *off >= 0 { *off as usize } else { vec.len() - (-1 - *off) as usize }, vec.len());
-                            let end = usize::min(if *del >= 0 { *del as usize } else { vec.len() - (-1 - *del) as usize }, vec.len());
-                            vec.splice(beg .. end, ins.iter().cloned());
-                        },
+                            let beg = usize::min(
+                                if *off >= 0 {
+                                    *off as usize
+                                } else {
+                                    vec.len() - (-1 - *off) as usize
+                                },
+                                vec.len(),
+                            );
+                            let end = usize::min(
+                                if *del >= 0 {
+                                    *del as usize
+                                } else {
+                                    vec.len() - (-1 - *del) as usize
+                                },
+                                vec.len(),
+                            );
+                            vec.splice(beg..end, ins.iter().cloned());
+                        }
                         _ => (),
                     }
                 }
             }
-            Array(vec.into_iter().map(|elm| modify_value(mods, pfx, elm)).collect())
-        },
+            Array(
+                vec.into_iter()
+                    .map(|elm| modify_value(mods, pfx, elm))
+                    .collect(),
+            )
+        }
         Object(mut map) => {
             if let Some(acts) = mods.get(pfx.into()) {
                 for act in acts {
@@ -206,24 +236,27 @@ fn modify_value(mods: &HashMap<Identifier, Vec<Action>>, pfx: &str, mut val: Val
                     match act {
                         Merge(Object(obj)) => {
                             map.extend(obj.iter().map(|(k, v)| (k.clone(), v.clone())));
-                        },
+                        }
                         _ => (),
                     }
                 }
             }
-            
-            Object(map.into_iter().map(|(key, val)| {
-                let field = nested_field(pfx, &key);
-                (key, modify_value(mods, &field, val))
-            }).collect())
-        },
+
+            Object(
+                map.into_iter()
+                    .map(|(key, val)| {
+                        let field = nested_field(pfx, &key);
+                        (key, modify_value(mods, &field, val))
+                    }).collect(),
+            )
+        }
         Null => Null,
     }
 }
 
 fn modify_primitive(mods: &HashMap<Identifier, Vec<Action>>, pfx: &str, mut val: Value) -> Value {
     use Value::*;
-    
+
     if let Some(acts) = mods.get(pfx.into()) {
         for act in acts {
             use Action::*;
@@ -232,11 +265,11 @@ fn modify_primitive(mods: &HashMap<Identifier, Vec<Action>>, pfx: &str, mut val:
                 (U64(pre), Add(U64(arg))) => U64(pre + arg),
                 (U64(pre), Add(I64(arg))) => I64(*pre as i64 + arg),
                 (U64(pre), Add(F64(arg))) => F64(*pre as f64 + arg),
-                
+
                 (I64(pre), Add(U64(arg))) => I64(pre + *arg as i64),
                 (I64(pre), Add(I64(arg))) => I64(pre + arg),
                 (I64(pre), Add(F64(arg))) => F64(*pre as f64 + arg),
-                
+
                 (F64(pre), Add(U64(arg))) => F64(pre + *arg as f64),
                 (F64(pre), Add(I64(arg))) => F64(pre + *arg as f64),
                 (F64(pre), Add(F64(arg))) => F64(pre + arg),
@@ -245,24 +278,24 @@ fn modify_primitive(mods: &HashMap<Identifier, Vec<Action>>, pfx: &str, mut val:
                 (U64(pre), Sub(U64(arg))) => U64(pre - arg),
                 (U64(pre), Sub(I64(arg))) => I64(*pre as i64 - arg),
                 (U64(pre), Sub(F64(arg))) => F64(*pre as f64 - arg),
-                
+
                 (I64(pre), Sub(U64(arg))) => I64(pre - *arg as i64),
                 (I64(pre), Sub(I64(arg))) => I64(pre - arg),
                 (I64(pre), Sub(F64(arg))) => F64(*pre as f64 - arg),
-                
+
                 (F64(pre), Sub(U64(arg))) => F64(pre - *arg as f64),
                 (F64(pre), Sub(I64(arg))) => F64(pre - *arg as f64),
                 (F64(pre), Sub(F64(arg))) => F64(pre - arg),
-                
+
                 // multiply
                 (U64(pre), Mul(U64(arg))) => U64(pre * arg),
                 (U64(pre), Mul(I64(arg))) => I64(*pre as i64 * arg),
                 (U64(pre), Mul(F64(arg))) => F64(*pre as f64 * arg),
-                
+
                 (I64(pre), Mul(U64(arg))) => I64(pre * *arg as i64),
                 (I64(pre), Mul(I64(arg))) => I64(pre * arg),
                 (I64(pre), Mul(F64(arg))) => F64(*pre as f64 * arg),
-                
+
                 (F64(pre), Mul(U64(arg))) => F64(pre * *arg as f64),
                 (F64(pre), Mul(I64(arg))) => F64(pre * *arg as f64),
                 (F64(pre), Mul(F64(arg))) => F64(pre * arg),
@@ -271,11 +304,11 @@ fn modify_primitive(mods: &HashMap<Identifier, Vec<Action>>, pfx: &str, mut val:
                 (U64(pre), Div(U64(arg))) => U64(pre / arg),
                 (U64(pre), Div(I64(arg))) => I64(*pre as i64 / arg),
                 (U64(pre), Div(F64(arg))) => F64(*pre as f64 / arg),
-                
+
                 (I64(pre), Div(U64(arg))) => I64(pre / *arg as i64),
                 (I64(pre), Div(I64(arg))) => I64(pre / arg),
                 (I64(pre), Div(F64(arg))) => F64(*pre as f64 / arg),
-                
+
                 (F64(pre), Div(U64(arg))) => F64(pre / *arg as f64),
                 (F64(pre), Div(I64(arg))) => F64(pre / *arg as f64),
                 (F64(pre), Div(F64(arg))) => F64(pre / arg),
@@ -285,21 +318,23 @@ fn modify_primitive(mods: &HashMap<Identifier, Vec<Action>>, pfx: &str, mut val:
 
                 // concat
                 (String(pre), Add(String(arg))) => String(pre.clone() + arg),
-                
+
                 (Bytes(pre), Add(Bytes(arg))) => {
                     let mut vec = pre.clone();
                     vec.append(&mut arg.clone());
                     Bytes(vec)
-                },
-                
+                }
+
                 // replace
-                (String(pre), Replace(regex, subst)) => String(regex.replace_all(pre, subst.as_str()).into()),
-                
+                (String(pre), Replace(regex, subst)) => {
+                    String(regex.replace_all(pre, subst.as_str()).into())
+                }
+
                 _ => continue,
             };
         }
     }
-    
+
     match val {
         I64(v) if v > 0 => U64(v as u64),
         F64(v) if (v as u64) as f64 == v => U64(v as u64),
@@ -318,10 +353,15 @@ fn nested_field(pfx: &str, key: &ObjectKey) -> String {
 }
 
 mod splice {
-    use super::{Value};
-    use serde::{Serializer, Deserializer, Deserialize, de::{self}, ser::{SerializeSeq}};
-    
-    pub fn serialize<S: Serializer>(off: &i32, del: &i32, ins: &Vec<Value>, serializer: S) -> Result<S::Ok, S::Error> {
+    use super::Value;
+    use serde::{de, ser::SerializeSeq, Deserialize, Deserializer, Serializer};
+
+    pub fn serialize<S: Serializer>(
+        off: &i32,
+        del: &i32,
+        ins: &Vec<Value>,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error> {
         let mut map = serializer.serialize_seq(Some(2 + ins.len()))?;
         map.serialize_element(off)?;
         map.serialize_element(del)?;
@@ -330,8 +370,10 @@ mod splice {
         }
         map.end()
     }
-    
-    pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<(i32, i32, Vec<Value>), D::Error> {
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(
+        deserializer: D,
+    ) -> Result<(i32, i32, Vec<Value>), D::Error> {
         let seq: Vec<Value> = Vec::deserialize(deserializer)?;
         let mut it = seq.into_iter();
         use Value::*;
@@ -340,160 +382,208 @@ mod splice {
             (Some(I64(off)), Some(U64(del))) => Ok((off as i32, del as i32, it.collect())),
             (Some(U64(off)), Some(I64(del))) => Ok((off as i32, del as i32, it.collect())),
             (Some(I64(off)), Some(I64(del))) => Ok((off as i32, del as i32, it.collect())),
-            _ => Err(de::Error::custom("Invalid $slice op"))
+            _ => Err(de::Error::custom("Invalid $slice op")),
         }
     }
 }
 
 #[cfg(test)]
 mod test {
-    use super::{Modify, Action};
-    use serde_json::{from_str, to_string, from_value, Value};
+    use super::{Action, Modify};
+    use serde_json::{from_str, from_value, to_string, Value};
 
     #[test]
     fn parse_field_set_single() {
-        test_parse!(Modify, json!({ "field": { "$set": 0 } }),
-                    Modify::one("field", Action::Set(json_val!(0))));
+        test_parse!(
+            Modify,
+            json!({ "field": { "$set": 0 } }),
+            Modify::one("field", Action::Set(json_val!(0)))
+        );
 
-        test_parse!(Modify, json!({ "field": { "$set": "abc" } }),
-                    Modify::one("field", Action::Set(json_val!("abc"))));
+        test_parse!(
+            Modify,
+            json!({ "field": { "$set": "abc" } }),
+            Modify::one("field", Action::Set(json_val!("abc")))
+        );
 
-        test_parse!(Modify, json!({ "field": { "$set": { "a": 99 } } }),
-                    Modify::one("field", Action::Set(json_val!({ "a": 99 }))));
+        test_parse!(
+            Modify,
+            json!({ "field": { "$set": { "a": 99 } } }),
+            Modify::one("field", Action::Set(json_val!({ "a": 99 })))
+        );
     }
 
     #[test]
     fn build_field_set_one() {
-        test_build!(Modify::one("field", Action::Set(json_val!(0))),
-                    json!({ "field": { "$set": 0 } }));
+        test_build!(
+            Modify::one("field", Action::Set(json_val!(0))),
+            json!({ "field": { "$set": 0 } })
+        );
 
-        test_build!(Modify::one("field", Action::Set(json_val!("abc"))),
-                    json!({ "field": { "$set": "abc" } }));
+        test_build!(
+            Modify::one("field", Action::Set(json_val!("abc"))),
+            json!({ "field": { "$set": "abc" } })
+        );
 
-        test_build!(Modify::one("field", Action::Set(json_val!({ "a": 99 }))),
-                    json!({ "field": { "$set": { "a": 99 } } }));
+        test_build!(
+            Modify::one("field", Action::Set(json_val!({ "a": 99 }))),
+            json!({ "field": { "$set": { "a": 99 } } })
+        );
     }
 
     #[test]
     fn parse_field_set_multi() {
-        test_parse!(Modify, json!({ "field": { "$set": 0 }, "string": { "$set": "abc" } }),
-                    Modify::one("field", Action::Set(json_val!(0)))
-                    .with("string", Action::Set(json_val!("abc"))));
+        test_parse!(
+            Modify,
+            json!({ "field": { "$set": 0 }, "string": { "$set": "abc" } }),
+            Modify::one("field", Action::Set(json_val!(0)))
+                .with("string", Action::Set(json_val!("abc")))
+        );
     }
 
     #[test]
     fn build_field_set_multi() {
-        test_build!(Modify::one("field", Action::Set(json_val!(0)))
-                    .with("string", Action::Set(json_val!("abc"))),
-                    json!({ "field": { "$set": 0 }, "string": { "$set": "abc" } }));
+        test_build!(
+            Modify::one("field", Action::Set(json_val!(0)))
+                .with("string", Action::Set(json_val!("abc"))),
+            json!({ "field": { "$set": 0 }, "string": { "$set": "abc" } })
+        );
     }
 
     #[test]
     fn field_set() {
         let m: Modify = json_val!({ "field": { "$set": 123 } });
 
-        assert_eq!(m.apply(json_val!({ "field": "abc" })),
-                   json_val!({ "field": 123 }));
+        assert_eq!(
+            m.apply(json_val!({ "field": "abc" })),
+            json_val!({ "field": 123 })
+        );
     }
 
     #[test]
     fn field_delete() {
         let m: Modify = json_val!({ "field": "$delete" });
 
-        assert_eq!(m.apply(json_val!({ "field": "abc" })),
-                   json_val!({ "field": null }));
+        assert_eq!(
+            m.apply(json_val!({ "field": "abc" })),
+            json_val!({ "field": null })
+        );
     }
 
     #[test]
     fn sub_field_set() {
         let m: Modify = json_val!({ "obj.str": { "$set": "def" } });
 
-        assert_eq!(m.apply(json_val!({ "obj": { "str": "abc" } })),
-                   json_val!({ "obj": { "str": "def" } }));
+        assert_eq!(
+            m.apply(json_val!({ "obj": { "str": "abc" } })),
+            json_val!({ "obj": { "str": "def" } })
+        );
     }
 
     #[test]
     fn sub_field_delete() {
         let m: Modify = json_val!({ "obj.key": "$delete" });
 
-        assert_eq!(m.apply(json_val!({ "obj": { "key": "abc" } })),
-                   json_val!({ "obj": { "key": null } }));
+        assert_eq!(
+            m.apply(json_val!({ "obj": { "key": "abc" } })),
+            json_val!({ "obj": { "key": null } })
+        );
     }
 
     #[test]
     fn numeric_add() {
         let m: Modify = json_val!({ "counter": { "$add": 1 } });
 
-        assert_eq!(m.apply(json_val!({ "counter": 0 })),
-                   json_val!({ "counter": 1 }));
+        assert_eq!(
+            m.apply(json_val!({ "counter": 0 })),
+            json_val!({ "counter": 1 })
+        );
     }
 
     #[test]
     fn numeric_sub() {
         let m: Modify = json_val!({ "counter": { "$add": -1 } });
 
-        assert_eq!(m.apply(json_val!({ "counter": 10 })),
-                   json_val!({ "counter": 9 }));
+        assert_eq!(
+            m.apply(json_val!({ "counter": 10 })),
+            json_val!({ "counter": 9 })
+        );
     }
 
     #[test]
     fn string_replace() {
         let m: Modify = json_val!({ "str": { "$replace": ["bra", "3"] } });
 
-        assert_eq!(m.apply(json_val!({ "str": "abracadabra" })),
-                   json_val!({ "str": "a3cada3" }));
+        assert_eq!(
+            m.apply(json_val!({ "str": "abracadabra" })),
+            json_val!({ "str": "a3cada3" })
+        );
     }
 
     #[test]
     fn array_add() {
         let m: Modify = json_val!({ "list": { "$add": [2, 3, 4] } });
 
-        assert_eq!(m.apply(json_val!({ "list": [1, 3, 5] })),
-                   json_val!({ "list": [1, 3, 5, 2, 4] }));
+        assert_eq!(
+            m.apply(json_val!({ "list": [1, 3, 5] })),
+            json_val!({ "list": [1, 3, 5, 2, 4] })
+        );
     }
 
     #[test]
     fn array_sub() {
         let m: Modify = json_val!({ "list": { "$sub": [2, 3, 5] } });
 
-        assert_eq!(m.apply(json_val!({ "list": [1, 2, 4, 5] })),
-                   json_val!({ "list": [1, 4] }));
+        assert_eq!(
+            m.apply(json_val!({ "list": [1, 2, 4, 5] })),
+            json_val!({ "list": [1, 4] })
+        );
     }
 
     #[test]
     fn array_prepend() {
         let m: Modify = json_val!({ "list": { "$splice": [0, 0, 1, 2] } });
 
-        assert_eq!(m.apply(json_val!({ "list": [3, 4, 5] })),
-                   json_val!({ "list": [1, 2, 3, 4, 5] }));
+        assert_eq!(
+            m.apply(json_val!({ "list": [3, 4, 5] })),
+            json_val!({ "list": [1, 2, 3, 4, 5] })
+        );
     }
 
     #[test]
     fn array_append() {
         let m: Modify = json_val!({ "list": { "$splice": [-1, -1, 1, 2] } });
 
-        assert_eq!(m.apply(json_val!({ "list": [3, 4, 5] })),
-                   json_val!({ "list": [3, 4, 5, 1, 2] }));
+        assert_eq!(
+            m.apply(json_val!({ "list": [3, 4, 5] })),
+            json_val!({ "list": [3, 4, 5, 1, 2] })
+        );
     }
 
     #[test]
     fn array_splice() {
         let m: Modify = json_val!({ "list": { "$splice": [1, 3, 0] } });
 
-        assert_eq!(m.apply(json_val!({ "list": [1, 2, 3, 4, 5] })),
-                   json_val!({ "list": [1, 0, 4, 5] }));
+        assert_eq!(
+            m.apply(json_val!({ "list": [1, 2, 3, 4, 5] })),
+            json_val!({ "list": [1, 0, 4, 5] })
+        );
 
         let m: Modify = json_val!({ "list": { "$splice": [-4, -1, 0, -1] } });
 
-        assert_eq!(m.apply(json_val!({ "list": [1, 2, 3, 4, 5] })),
-                   json_val!({ "list": [1, 2, 0, -1] }));
+        assert_eq!(
+            m.apply(json_val!({ "list": [1, 2, 3, 4, 5] })),
+            json_val!({ "list": [1, 2, 0, -1] })
+        );
     }
 
     #[test]
     fn object_merge() {
         let m: Modify = json_val!({ "obj": { "$merge": { "a": 2, "b": "a" } } });
 
-        assert_eq!(m.apply(json_val!({ "obj": { "a": 1, "c": true } })),
-                   json_val!({ "obj": { "a": 2, "b": "a", "c": true } }));
+        assert_eq!(
+            m.apply(json_val!({ "obj": { "a": 1, "c": true } })),
+            json_val!({ "obj": { "a": 2, "b": "a", "c": true } })
+        );
     }
 }

@@ -99,7 +99,7 @@ impl Collection {
     ///
     /// Primary key/identifier of new inserted document will be returned.
     ///
-    pub fn insert<T: Serialize>(&self, doc: &T) -> Result<Primary> {
+    pub fn insert<T: Serialize>(&self, doc: T) -> Result<Primary> {
         let id = self.new_id()?;
 
         self.put(&Document::new(doc).with_id(id))?;
@@ -505,9 +505,9 @@ impl Collection {
     /// Set indexes of collection
     ///
     /// This method overrides collection indexes
-    pub fn set_indexes<P: AsRef<str>>(&self, indexes: &[(P, IndexKind, KeyType)]) -> Result<()> {
+    pub fn set_indexes(&self, indexes: &[(Identifier, IndexKind, KeyType)]) -> Result<()> {
         for (path, kind, key) in indexes {
-            self.ensure_index(path.as_ref(), *kind, *key)?;
+            self.ensure_index(path, *kind, *key)?;
         }
         Ok(())
     }

@@ -33,6 +33,7 @@ impl Actor for Storage {
 }
 
 /// Get database stats
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct GetStats;
 
 impl Message for GetStats {
@@ -48,6 +49,7 @@ impl Handler<GetStats> for Storage {
 }
 
 /// Get database info
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct GetInfo;
 
 impl Message for GetInfo {
@@ -63,6 +65,7 @@ impl Handler<GetInfo> for Storage {
 }
 
 /// Get collections request
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct GetCollections;
 
 pub type ListCollections = Vec<String>;
@@ -85,6 +88,7 @@ pub fn EnsureCollection<C: Into<Identifier>>(coll: C) -> EnsureCollectionMsg {
     EnsureCollectionMsg(coll.into())
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EnsureCollectionMsg(Identifier);
 
 impl Message for EnsureCollectionMsg {
@@ -110,6 +114,7 @@ pub fn DropCollection<C: Into<Identifier>>(coll: C) -> DropCollectionMsg {
     DropCollectionMsg(coll.into())
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DropCollectionMsg(Identifier);
 
 impl Message for DropCollectionMsg {
@@ -132,6 +137,7 @@ pub fn GetIndexes<C: Into<Identifier>>(coll: C) -> GetIndexesMsg {
 
 pub type ListIndexes = Vec<(Identifier, IndexKind, KeyType)>;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GetIndexesMsg(Identifier);
 
 impl Message for GetIndexesMsg {
@@ -146,12 +152,34 @@ impl Handler<GetIndexesMsg> for Storage {
     }
 }
 
+/// Set indexes for collection
+#[allow(non_snake_case)]
+pub fn SetIndexes<C: Into<Identifier>, I: Into<ListIndexes>>(coll: C, indexes: I) -> SetIndexesMsg {
+    SetIndexesMsg(coll.into(), indexes.into())
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SetIndexesMsg(Identifier, ListIndexes);
+
+impl Message for SetIndexesMsg {
+    type Result = LeResult<()>;
+}
+
+impl Handler<SetIndexesMsg> for Storage {
+    type Result = <SetIndexesMsg as Message>::Result;
+
+    fn handle(&mut self, SetIndexesMsg(collection, indexes): SetIndexesMsg, _: &mut Self::Context) -> Self::Result {
+        self.0.collection(collection)?.set_indexes(&indexes)
+    }
+}
+
 /// Ensure new index for collection
 #[allow(non_snake_case)]
 pub fn EnsureIndex<C: Into<Identifier>, F: Into<Identifier>>(coll: C, field: F, kind: IndexKind, key: KeyType) -> EnsureIndexMsg {
     EnsureIndexMsg(coll.into(), field.into(), kind, key)
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EnsureIndexMsg(Identifier, Identifier, IndexKind, KeyType);
 
 impl Message for EnsureIndexMsg {
@@ -172,6 +200,7 @@ pub fn DropIndex<C: Into<Identifier>, F: Into<Identifier>>(coll: C, field: F) ->
     DropIndexMsg(coll.into(), field.into())
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DropIndexMsg(Identifier, Identifier);
 
 impl Message for DropIndexMsg {
@@ -192,6 +221,7 @@ pub fn Insert<C: Into<Identifier>, T: Serialize>(coll: C, data: T) -> InsertMsg<
     InsertMsg(coll.into(), data)
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InsertMsg<T>(Identifier, T);
 
 impl<T: Serialize> Message for InsertMsg<T> {
@@ -212,6 +242,7 @@ pub fn Get<C: Into<Identifier>, T: DeserializeOwned>(coll: C, id: Primary) -> Ge
     GetMsg(coll.into(), id, PhantomData)
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GetMsg<T>(Identifier, Primary, PhantomData<T>);
 
 impl<T: DeserializeOwned + 'static> Message for GetMsg<T> {
@@ -232,6 +263,7 @@ pub fn Put<C: Into<Identifier>, T: Serialize>(coll: C, data: Document<T>) -> Put
     PutMsg(coll.into(), data)
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PutMsg<T>(Identifier, Document<T>);
 
 impl<T: Serialize> Message for PutMsg<T> {
@@ -252,6 +284,7 @@ pub fn Delete<C: Into<Identifier>>(coll: C, id: Primary) -> DeleteMsg {
     DeleteMsg(coll.into(), id)
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DeleteMsg(Identifier, Primary);
 
 impl Message for DeleteMsg {
@@ -272,6 +305,7 @@ pub fn Update<C: Into<Identifier>>(coll: C, filter: Option<Filter>, modify: Modi
     UpdateMsg(coll.into(), filter, modify)
 }
 
+#[derive(Debug, Clone, PartialEq)]
 pub struct UpdateMsg(Identifier, Option<Filter>, Modify);
 
 impl Message for UpdateMsg {
@@ -292,6 +326,7 @@ pub fn Remove<C: Into<Identifier>>(coll: C, filter: Option<Filter>) -> RemoveMsg
     RemoveMsg(coll.into(), filter)
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RemoveMsg(Identifier, Option<Filter>);
 
 impl Message for RemoveMsg {
@@ -312,6 +347,7 @@ pub fn Find<C: Into<Identifier>, T>(coll: C, filter: Option<Filter>, order: Orde
     FindMsg(coll.into(), filter, order, PhantomData)
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FindMsg<T>(Identifier, Option<Filter>, Order, PhantomData<T>);
 
 impl<T: DeserializeOwned + 'static> Message for FindMsg<T> {

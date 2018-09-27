@@ -8,8 +8,10 @@
 * Identifying documents using auto-incrementing integer primary keys.
 * Indexing any fields of documents using unique or duplicated keys.
 * Searching and ordering documents using indexed fields or primary key.
+* Selecting documents using complex filters with fields comparing and logical operations.
 * Updating documents using rich set of modifiers.
 * Storing documents into independent storages so called collections.
+* Flexible `query!` macro which helps write clear and readable queries.
 * Using [LMDB](https://en.wikipedia.org/wiki/Lightning_Memory-Mapped_Database) as backend for document storage and indexing engine.
 
 ## Usage example
@@ -41,10 +43,10 @@ fn main() {
     let collection = storage.collection("my-docs").unwrap();
     
     // Ensure indexes
-    query!(ensure index for collection
-        title String unique
-        tag String
-        timestamp Int unique
+    query!(index for collection
+        title str unique,
+        tag str,
+        timestamp int unique,
     ).unwrap();
     
     // Insert JSON document
@@ -69,18 +71,18 @@ fn main() {
     
     // Update documents
     let n_affected = query!(
-        update collection modify [title = "Other title"]
+        update in collection modify title = "Other title"
         where title == "First title"
     ).unwrap();
 
     // Find documents with descending ordering
     let found_docs = query!(
-        find MyDoc in collection order ^
+        find MyDoc in collection order desc
     ).unwrap().collect::<Result<Vec<_>, _>>().unwrap();
 
     // Remove documents
     let n_affected = query!(
-        remove collection where title == "Other title"
+        remove from collection where title == "Other title"
     ).unwrap();
 }
 ```
@@ -89,7 +91,7 @@ fn main() {
 
 Field name is a sequence of dot-separated identifiers which represents nesting of value in document.
 
-For example:
+For example, in document below:
 
 ```ignore
 {
@@ -103,6 +105,8 @@ For example:
 }
 ```
 
+You can access fields by the next ways:
+
 ```ignore
 a == "abc"
 a += "def"
@@ -112,74 +116,202 @@ d == "a"
 d[-1..] += ["b", "c"]
 ```
 
-## Supported key types
+## Indexing
 
-| Internal Type | Serde Type | Description                   |
+Index query example:
+
+```ignore
+query!(
+    index for some_collection
+        some_field Int unique, // unique index
+        other_field.with.sub_field String,
+        // ...next fields
+)
+```
+
+### Index kinds
+
+| Internal Type | JSON Type  | Description                  |
+| ------------- | ---------  | -----------                  |
+| Unique        | "uni"      | Each value is unique         |
+| Duplicate     | "dup"      | The values can be duplicated |
+
+Unique index guarantee that each value can be stored once, any duplicates disalowed.
+
+The operation will fail in two cases:
+
+1. When you try to insert new document which duplicate unique field
+2. When you try to ensure unique index for field which have duplicates
+
+Unique fields is pretty fit for sorting.
+
+*TODO: Full-text index kind for searching*
+
+### Key types
+
+| Internal Type | JSON Type  | Description                   |
 | ------------- | ---------  | -----------                   |
-| `Int`         | `"int"`    | 64-bit signed integers        |
-| `Float`       | `"float"`  | 64-bit floating point numbers |
-| `Bool`        | `"bool"`   | boolean values                |
-| `String`      | `"string"` | UTF-8 strings                 |
-| `Binary`      | `"binary"` | raw binary data               |
+| Int           | "int"      | 64-bit signed integers        |
+| Float         | "float"    | 64-bit floating point numbers |
+| Bool          | "bool"     | boolean values                |
+| String        | "string"   | UTF-8 strings                 |
+| Binary        | "binary"   | raw binary data               |
 
-## Supported filters
+## Filters
 
 ### Comparison operations
 
-| Internal Repr            | Serde/JSON Repr                 | Query (where)       | Description           |
-| -------------            | ---------------                 | -------------       | -----------           |
-| `Eq(value)`              | `{"$eq": value}`                | `field == val`      | General Equality      |
-| `In(Vec<value>)`         | `{"$in": [...values]}`          | `field in [...val]` | One of                |
-| `Lt(value)`              | `{"$lt": value}`                | `field < val`       | Less than             |
-| `Le(value)`              | `{"$le": value}`                | `field <= val`      | Less than or equal    |
-| `Gt(value)`              | `{"$gt": value}`                | `field > val`       | Greater than          |
-| `Ge(value)`              | `{"$ge": value}`                | `field >= val`      | Greater than or equal |
-| `Bw(a, true, b, true)`   | `{"$bw": [a, true, b, true]}`   | `field in a..b`     | Between including a b |
-| `Bw(a, false, b, false)` | `{"$bw": [a, false, b, false]}` | `field <in> a..b`   | Between excluding a b |
-| `Bw(a, true, b, false)`  | `{"$bw": [a, true, b, false]}`  | `field in> a..b`    | Between incl a excl b |
-| `Bw(a, false, b, true)`  | `{"$bw": [a, false, b, true]}`  | `field <in a..b`    | Between excl a incl b |
-| `Has`                    | `"$has"`                        | `field ?`           | Has exists (not null) |
+| Internal Repr          | JSON Repr                     | Query (where)     | Description           |
+| -------------          | ---------------               | -------------     | -----------           |
+| Eq(value)              | {"$eq": value}                | field == val      | General Equality      |
+| In(Vec<value>)         | {"$in": [...values]}          | field in [...val] | One of                |
+| Lt(value)              | {"$lt": value}                | field < val       | Less than             |
+| Le(value)              | {"$le": value}                | field <= val      | Less than or equal    |
+| Gt(value)              | {"$gt": value}                | field > val       | Greater than          |
+| Ge(value)              | {"$ge": value}                | field >= val      | Greater than or equal |
+| Bw(a, true, b, true)   | {"$bw": [a, true, b, true]}   | field in a..b     | Between including a b |
+| Bw(a, false, b, false) | {"$bw": [a, false, b, false]} | field \<in> a..b  | Between excluding a b |
+| Bw(a, true, b, false)  | {"$bw": [a, true, b, false]}  | field in> a..b    | Between incl a excl b |
+| Bw(a, false, b, true)  | {"$bw": [a, false, b, true]}  | field <in a..b    | Between excl a incl b |
+| Has                    | "$has"                        | field ?           | Has exists (not null) |
+
+**NOTE: To be able to use particular field of document in filters you need create index for it first.**
+
+Some examples:
+
+```ignore
+query!(@filter field == 123)
+query!(@filter field.subfield != "abc")
+query!(@filter field > 123)
+query!(@filter field <= 456)
+query!(@filter field in 123..456)   // [123 ... 456]
+query!(@filter field <in> 123..456) // (123 ... 456)
+query!(@filter field <in 123..456)  // (123 ... 456]
+query!(@filter field in> 123..456)  // [123 ... 456)
+```
 
 ### Logical operations
 
-| Internal Repr      | Serde/JSON Repr          | Query (where)            | Description         |
-| -------------      | ---------------          | -------------            | -----------         |
-| `Not(Box<filter>)` | `{"$not": filter}`       | `! filter`               | Filter is false     |
-| `And(Vec<filter>)` | `{"$and": [...filters]}` | `filter && ...filters`   | All filters is true |
-| `Or(Vec<filter>)`  | `{"$or": [...filters]}`  | `filter \|\| ...filters` | Any filter is true  |
+| Internal Repr    | JSON Repr              | Query (where)          | Description         |
+| -------------    | ---------------        | -------------          | -----------         |
+| Not(Box<filter>) | {"$not": filter}       | ! filter               | Filter is false     |
+| And(Vec<filter>) | {"$and": [...filters]} | filter &&   ...filters | All filters is true |
+| Or(Vec<filter>)  | {"$or":  [...filters]} | filter \|\| ...filters | Any filter is true  |
 
-## Supported ordering
+**NOTE: Be careful with using complex ORs and global NOTs since it may slow down your queries.**
 
-| Internal Repr        | Serde/JSON Repr      | Query (where)        | Description                        |
-| -------------        | ---------------      | -------------        | -----------                        |
-| `Primary(Asc)`       | `"$asc"`             | `>`, `v` (default)   | Ascending ordering by primary key  |
-| `Primary(Desc)`      | `"$desc"`            | `<`, `^`             | Descending ordering by primary key |
-| `Field(field, Asc)`  | `{"field": "$asc"}`  | `field >`, `field v` | Ascending ordering by field        |
-| `Field(field, Desc)` | `{"field": "$desc"}` | `field <`, `field ^` | Descending ordering by field       |
+Some examples:
 
-## Supported modifiers
+```ignore
+// negate filter condition
+query!(@filter ! field == "abc")
 
-| Internal Repr                | Serde/JSON Repr                   | Query (where)           | Description                |
-| -------------                | ---------------                   | -------------           | -----------                |
-| `Set(value)`                 | `{"$set": value}`                 | `field = value`         | Set field value            |
-| `Delete`                     | `"$delete"`                       | `- field`               | Delete field               |
-| `Add(value)`                 | `{"$add": value}`                 | `field += value`        | Add value to field         |
-| `Sub(value)`                 | `{"$sub": value}`                 | `field -= value`        | Substract value from field |
-| `Mul(value)`                 | `{"$mul": value}`                 | `field *= value`        | Multiply field to value    |
-| `Div(value)`                 | `{"$div": value}`                 | `field /= value`        | Divide field to value      |
-| `Toggle`                     | `"$toggle"`                       | `! field`               | Toggle boolean field       |
-| `Replace(pat, sub)`          | `{"$replace": ["pat", "sub"]}`    | `field ~= "pat" "sub"`  | Replace using regexp       |
-| `Splice(off, del, Vec<ins>)` | `{"$splice": [off, del]}`         | `- field[off..del]`     | Remove from an array       |
-| `Splice(off, del, Vec<ins>)` | `{"$splice": [off, del, ...ins]}` | `field[off..del] = ins` | Splice an array            |
-| `Merge(object)`              | `{"$merge": object}`              | `field ~= object`       | Merge an object            |
+// and filter conditions
+query!(@filter field > 123 && field <= 456)
+
+// or filter conditions
+query!(@filter field <= 123 || field > 456)
+```
+
+## Results ordering
+
+| Internal Repr      | JSON Repr          | Query (where)       | Description                        |
+| -------------      | ---------------    | -------------       | -----------                        |
+| Primary(Asc)       | "$asc"             | >, asc (default)    | Ascending ordering by primary key  |
+| Primary(Desc)      | "$desc"            | <, desc             | Descending ordering by primary key |
+| Field(field, Asc)  | {"field": "$asc"}  | field >, field asc  | Ascending ordering by field        |
+| Field(field, Desc) | {"field": "$desc"} | field <, field desc | Descending ordering by field       |
+
+Examples:
+
+```ignore
+// ascending ordering by primary key
+query!(@order >)
+query!(@order asc)
+
+// descending ordering by primary key
+query!(@order <)
+query!(@order desc)
+
+// ascending ordering by field
+query!(@order by field >)
+query!(@order by field asc)
+
+// descending ordering by other.field
+query!(@order by other.field <)
+query!(@order by other.field desc)
+```
+
+## Modifiers
+
+| Internal Repr              | JSON Repr                       | Query (where)         | Description                |
+| -------------              | ---------------                 | -------------         | -----------                |
+| Set(value)                 | {"$set": value}                 | field = value         | Set field value            |
+| Delete                     | "$delete"                       | field ~               | Delete field               |
+| Add(value)                 | {"$add": value}                 | field += value        | Add value to field         |
+| Sub(value)                 | {"$sub": value}                 | field -= value        | Substract value from field |
+| Mul(value)                 | {"$mul": value}                 | field *= value        | Multiply field to value    |
+| Div(value)                 | {"$div": value}                 | field /= value        | Divide field to value      |
+| Toggle                     | "$toggle"                       | field !               | Toggle boolean field       |
+| Replace(pat, sub)          | {"$replace": ["pat", "sub"]}    | field ~= "pat" "sub"  | Replace using regexp       |
+| Splice(from, to, Vec<ins>) | {"$splice": [from, to]}         | field[from..to] ~     | Remove from an array       |
+| Splice(from, to, Vec<ins>) | {"$splice": [from, to, ...ins]} | field[from..to] = ins | Splice an array            |
+| Merge(object)              | {"$merge": object}              | field ~= object       | Merge an object            |
+
+The negative range value means position from end of an array:
+
+* -1 the end of an array
+* -2 the last element
+* -3 the element before the last
+* ...and so on
 
 ## Extended behavior of modifiers
 
-| Internal Repr | Serde/JSON Repr         | Query (where)         | Description                               |
-| ------------- | ---------------         | -------------         | -----------                               |
-| `Add(values)` | `{"$add": [...values]}` | `field += [..values]` | Add unique values to an array as a set    |
-| `Sub(values)` | `{"$sub": [...values]}` | `field -= [..values]` | Remove unique values to an array as a set |
-| `Add(text)`   | `{"$add": "text"}`      | `field += "text"`     | Append text to a string                   |
+| Internal Repr | JSON Repr             | Query (where)       | Description                               |
+| ------------- | ---------------       | -------------       | -----------                               |
+| Add(values)   | {"$add": [...values]} | field += [..values] | Add unique values to an array as a set    |
+| Sub(values)   | {"$sub": [...values]} | field -= [..values] | Remove unique values to an array as a set |
+| Add(text)     | {"$add": "text"}      | field += "text"     | Append text to a string                   |
+
+Examples:
+
+```ignore
+// set single fields
+query!(@modify field = 123)
+query!(@modify other.field = "abc")
+
+// set multiple fields
+query!(@modify 
+    field = 1;
+    other.field = "abc";
+)
+
+// numeric operations
+query!(@modify field += 1) // add value to field
+query!(@modify field -= 1) // substract value from field
+query!(@modify field *= 1) // multiply field to value
+query!(@modify field /= 1) // divide field to value
+
+query!(@modify - field) // remove field
+query!(@modify ! field) // toggle boolean field
+
+query!(@modify str += "addon") // append piece to string
+query!(@modify str ~= "abc" "def") // regexp replace
+
+// modify array as list
+query!(@modify list[0..0] = [1, 2, 3]) // prepend to array
+query!(@modify list[-1..0] = [1, 2, 3]) // append to array
+query!(@modify - list[1..2]) // remove from array
+query!(@modify list[1..2] = [1, 2, 3]) // splice array
+
+// modify array as set
+query!(@modify set += [1, 2, 3]) // add elements
+query!(@modify set -= [4, 5, 6]) // remove elements
+
+// merge an object
+query!(@modify obj ~= { a: true, b: "abc", c: 123 })
+query!(@modify obj ~= extra)
+```
 
 */
 
@@ -279,13 +411,13 @@ mod tests {
     }
 
     fn mk_index(c: &Collection) -> Result<()> {
-        query!(ensure index c
-               s String unique
-               b Bool
-               i Int
-               f Float
-               n.i Int
-               n.a String)
+        query!(index for c
+               s str unique,
+               b bool,
+               i integer,
+               f float,
+               n.i int,
+               n.a string)
     }
 
     #[test]
@@ -294,9 +426,9 @@ mod tests {
         let c = s.collection("test").unwrap();
 
         assert_eq!(query!(insert into c &Doc::default()).unwrap(), 1);
-        assert_eq!(query!(insert c &Doc::default()).unwrap(), 2);
+        assert_eq!(query!(insert into c &Doc::default()).unwrap(), 2);
         assert_eq!(
-            query!(insert c {
+            query!(insert into c {
             "s": "",
             "b": false,
             "i": 0,
@@ -331,7 +463,7 @@ mod tests {
         fill_data(&c).unwrap();
 
         assert_eq!(
-            &query!(select Doc from c where s == "abc")
+            &query!(find Doc in c where s == "abc")
                 .unwrap()
                 .next()
                 .unwrap()
@@ -350,7 +482,7 @@ mod tests {
         mk_index(&c).unwrap();
 
         assert_eq!(
-            &query!(select Doc from c where s == "abc")
+            &query!(find Doc in c where s == "abc")
                 .unwrap()
                 .next()
                 .unwrap()
@@ -376,7 +508,7 @@ mod tests {
         let c = s.collection("test").unwrap();
 
         assert!(fill_data(&c).is_ok());
-        assert!(query!(insert c { "s": "abc" }).is_ok());
+        assert!(query!(insert into c { "s": "abc" }).is_ok());
         assert!(mk_index(&c).is_err());
     }
 
@@ -389,7 +521,7 @@ mod tests {
         fill_data(&c).unwrap();
 
         assert_found!(query!(find in c order >), 1, 2, 3, 4, 5, 6);
-        assert_found!(query!(find c order by <), 6, 5, 4, 3, 2, 1);
+        assert_found!(query!(find in c order <), 6, 5, 4, 3, 2, 1);
     }
 
     #[test]
@@ -404,8 +536,8 @@ mod tests {
             query!(find Value in c order by s >).unwrap().size_hint(),
             (6, Some(6))
         );
-        assert_found!(query!(find c order s v), 3, 5, 6, 1, 2, 4);
-        assert_found!(query!(find in c order by s ^), 4, 2, 1, 6, 5, 3);
+        assert_found!(query!(find in c order by s >), 3, 5, 6, 1, 2, 4);
+        assert_found!(query!(find in c order by s <), 4, 2, 1, 6, 5, 3);
     }
 
     #[test]
@@ -422,15 +554,15 @@ mod tests {
                 .size_hint(),
             (1, Some(1))
         );
-        assert_found!(query!(find c where [s == "xyz"] order >), 4);
-        assert_found!(query!(find in c where (n.a == "t1") order by >), 2, 5);
+        assert_found!(query!(find in c where s == "xyz" order >), 4);
+        assert_found!(query!(find in c where n.a == "t1"), 2, 5);
         assert_eq!(
-            query!(find Value in c where [n.a == "t2"] order <)
+            query!(find Value in c where n.a == "t2" order <)
                 .unwrap()
                 .size_hint(),
             (3, Some(3))
         );
-        assert_found!(query!(find c where (n.a == "t2") order ^), 6, 4, 2);
+        assert_found!(query!(find in c where n.a == "t2" order desc), 6, 4, 2);
     }
 
     #[test]
@@ -441,8 +573,8 @@ mod tests {
         mk_index(&c).unwrap();
         fill_data(&c).unwrap();
 
-        assert_found!(query!(find c where b == true), 3, 4, 6);
-        assert_found!(query!(find c where b == false), 1, 2, 5);
+        assert_found!(query!(find in c where b == true), 3, 4, 6);
+        assert_found!(query!(find in c where b == false), 1, 2, 5);
     }
 
     #[test]
@@ -453,10 +585,10 @@ mod tests {
         mk_index(&c).unwrap();
         fill_data(&c).unwrap();
 
-        assert_found!(query!(select from c where i == 1), 2, 4);
-        assert_found!(query!(select c where i == 2), 2, 3, 5);
+        assert_found!(query!(find in c where i == 1), 2, 4);
+        assert_found!(query!(find in c where i == 2), 2, 3, 5);
         assert_found!(query!(find in c where n.i == 1), 2);
-        assert_found!(query!(find c where [ n.i == 2 ] order <), 5, 3);
+        assert_found!(query!(find in c where n.i == 2 order <), 5, 3);
     }
 
     #[test]
@@ -473,20 +605,15 @@ mod tests {
                 .size_hint(),
             (2, Some(2))
         );
-        assert_found!(query!(find c where [s in ["abc", "xyz"]] order >), 1, 4);
-        assert_found!(
-            query!(find in c where (n.a in ["t1", "t4"]) order by >),
-            2,
-            4,
-            5
-        );
+        assert_found!(query!(find in c where s in ["abc", "xyz"] order >), 1, 4);
+        assert_found!(query!(find in c where n.a in ["t1", "t4"] order >), 2, 4, 5);
         assert_eq!(
-            query!(find Value in c where [n.a in ["t2"]] order <)
+            query!(find Value in c where n.a in ["t2"] order <)
                 .unwrap()
                 .size_hint(),
             (3, Some(3))
         );
-        assert_found!(query!(find c where (n.a in ["t2"]) order ^), 6, 4, 2);
+        assert_found!(query!(find in c where n.a in ["t2"] order desc), 6, 4, 2);
     }
 
     #[test]
@@ -497,10 +624,10 @@ mod tests {
         mk_index(&c).unwrap();
         fill_data(&c).unwrap();
 
-        assert_found!(query!(select from c where i in [1, 5]), 2, 4, 6);
-        assert_found!(query!(select c where i in [2]), 2, 3, 5);
+        assert_found!(query!(find in c where i in [1, 5]), 2, 4, 6);
+        assert_found!(query!(find in c where i in [2]), 2, 3, 5);
         assert_found!(query!(find in c where n.i in [1, 3]), 2, 4);
-        assert_found!(query!(find c where [ n.i in [2] ] order <), 5, 3);
+        assert_found!(query!(find in c where n.i in [2] order <), 5, 3);
     }
 
     #[test]
@@ -511,8 +638,8 @@ mod tests {
         mk_index(&c).unwrap();
         fill_data(&c).unwrap();
 
-        assert_found!(query!(find c where i in 2..3), 2, 3, 5, 6);
-        assert_found!(query!(find in c where (n.i in 1..2) order ^), 5, 3, 2);
+        assert_found!(query!(find in c where i in 2..3), 2, 3, 5, 6);
+        assert_found!(query!(find in c where n.i in 1..2 order desc), 5, 3, 2);
     }
 
     #[test]
@@ -523,8 +650,8 @@ mod tests {
         mk_index(&c).unwrap();
         fill_data(&c).unwrap();
 
-        assert_found!(query!(find c where i > 3), 3, 4, 6);
-        assert_found!(query!(find c where (n.i > 1) order <), 5, 4, 3);
+        assert_found!(query!(find in c where i > 3), 3, 4, 6);
+        assert_found!(query!(find in c where n.i > 1 order <), 5, 4, 3);
     }
 
     #[test]
@@ -536,7 +663,7 @@ mod tests {
         fill_data(&c).unwrap();
 
         assert_found!(query!(find in c where i >= 3), 3, 4, 6);
-        assert_found!(query!(find in c where (n.i >= 1) order ^), 5, 4, 3, 2);
+        assert_found!(query!(find in c where n.i >= 1 order desc), 5, 4, 3, 2);
     }
 
     #[test]
@@ -547,8 +674,8 @@ mod tests {
         mk_index(&c).unwrap();
         fill_data(&c).unwrap();
 
-        assert_found!(query!(find c where i < 3), 2, 3, 4, 5);
-        assert_found!(query!(find c where [n.i < 2] order ^), 6, 2);
+        assert_found!(query!(find in c where i < 3), 2, 3, 4, 5);
+        assert_found!(query!(find in c where n.i < 2 order desc), 6, 2);
     }
 
     #[test]
@@ -559,8 +686,8 @@ mod tests {
         mk_index(&c).unwrap();
         fill_data(&c).unwrap();
 
-        assert_found!(query!(find c where i <= 3), 2, 3, 4, 5, 6);
-        assert_found!(query!(find c where [n.i <= 2] order ^), 6, 5, 3, 2);
+        assert_found!(query!(find in c where i <= 3), 2, 3, 4, 5, 6);
+        assert_found!(query!(find in c where n.i <= 2 order desc), 6, 5, 3, 2);
     }
 
     #[test]
@@ -571,8 +698,8 @@ mod tests {
         mk_index(&c).unwrap();
         fill_data(&c).unwrap();
 
-        assert_found!(query!(find c where i?), 2, 3, 4, 5, 6);
-        assert_found!(query!(find c where [n.i?] order ^), 6, 5, 4, 3, 2);
+        assert_found!(query!(find in c where i?), 2, 3, 4, 5, 6);
+        assert_found!(query!(find in c where n.i? order desc), 6, 5, 4, 3, 2);
     }
 
     #[test]
@@ -584,7 +711,7 @@ mod tests {
         fill_data(&c).unwrap();
 
         assert_found!(query!(find in c where b == true && i == 2), 3);
-        assert_found!(query!(find c where (n.i == 2 && i == 2) order <), 5, 3);
+        assert_found!(query!(find in c where n.i == 2 && i == 2 order <), 5, 3);
     }
 
     #[test]
@@ -595,13 +722,8 @@ mod tests {
         mk_index(&c).unwrap();
         fill_data(&c).unwrap();
 
-        assert_found!(query!(find c where b == true || i == 2), 2, 3, 4, 5, 6);
-        assert_found!(
-            query!(find c where [n.i == 2 || i == 2] order by <),
-            5,
-            3,
-            2
-        );
+        assert_found!(query!(find in c where b == true || i == 2), 2, 3, 4, 5, 6);
+        assert_found!(query!(find in c where n.i == 2 || i == 2 order <), 5, 3, 2);
     }
 
     #[test]
@@ -612,10 +734,10 @@ mod tests {
         mk_index(&c).unwrap();
         fill_data(&c).unwrap();
 
-        assert_found!(query!(find c where s == "def"), 2);
-        assert_eq!(query!(delete from c where s == "def").unwrap(), 1);
-        assert_found!(query!(find c where s == "def"));
-        assert_found!(query!(find c where s == "abc"), 1);
+        assert_found!(query!(find in c where s == "def"), 2);
+        assert_eq!(query!(remove from c where s == "def").unwrap(), 1);
+        assert_found!(query!(find in c where s == "def"));
+        assert_found!(query!(find in c where s == "abc"), 1);
     }
 
     #[test]
@@ -627,9 +749,9 @@ mod tests {
         fill_data(&c).unwrap();
 
         assert_found!(query!(find in c where i >= 4), 3, 4, 6);
-        assert_eq!(query!(remove c where i >= 4).unwrap(), 3);
-        assert_found!(query!(find c where i >= 4));
-        assert_found!(query!(find c where i >= 2), 2, 5);
+        assert_eq!(query!(remove from c where i >= 4).unwrap(), 3);
+        assert_found!(query!(find in c where i >= 4));
+        assert_found!(query!(find in c where i >= 2), 2, 5);
     }
 
     #[test]
@@ -640,10 +762,13 @@ mod tests {
         mk_index(&c).unwrap();
         fill_data(&c).unwrap();
 
-        assert_found!(query!(find c where s == "def"), 2);
-        assert_eq!(query!(update c [ s = "klm" ] where s == "def").unwrap(), 1);
-        assert_found!(query!(find c where s == "def"));
-        assert_found!(query!(find c where s == "abc"), 1);
-        assert_found!(query!(find c where s == "klm"), 2);
+        assert_found!(query!(find in c where s == "def"), 2);
+        assert_eq!(
+            query!(update in c modify s = "klm" where s == "def").unwrap(),
+            1
+        );
+        assert_found!(query!(find in c where s == "def"));
+        assert_found!(query!(find in c where s == "abc"), 1);
+        assert_found!(query!(find in c where s == "klm"), 2);
     }
 }
