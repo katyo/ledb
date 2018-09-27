@@ -1,0 +1,13 @@
+[package]
+name = "ledb-macros"
+version = "0.1.0"
+authors = ["Kayo <kayo@illumium.org>"]
+
+[lib]
+proc-macro = true
+
+[dependencies]
+proc-macro-hack = "0.4"
+proc-macro2 = "0.4"
+syn = { version = "0.15", features = ["full"] }
+quote = "0.6"

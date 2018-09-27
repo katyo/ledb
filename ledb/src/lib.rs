@@ -183,6 +183,12 @@ d[-1..] += ["b", "c"]
 
 */
 
+#[macro_use]
+extern crate proc_macro_hack;
+#[allow(unused_imports)]
+#[macro_use]
+extern crate ledb_macros;
+
 extern crate byteorder;
 extern crate ordered_float;
 extern crate serde;
@@ -279,13 +285,13 @@ mod tests {
     }
 
     fn mk_index(c: &Collection) -> Result<()> {
-        query!(ensure index c
-               s String unique
-               b Bool
-               i Int
-               f Float
-               n.i Int
-               n.a String)
+        query!(index for c
+               s str unique,
+               b bool,
+               i int,
+               f float,
+               n.i int dup,
+               n.a str)
     }
 
     #[test]
@@ -294,7 +300,7 @@ mod tests {
         let c = s.collection("test").unwrap();
 
         assert_eq!(query!(insert into c &Doc::default()).unwrap(), 1);
-        assert_eq!(query!(insert c &Doc::default()).unwrap(), 2);
+        assert_eq!(query!(insert into c &Doc::default()).unwrap(), 2);
         assert_eq!(
             query!(insert c {
             "s": "",

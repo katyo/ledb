@@ -3,6 +3,7 @@
 members = [
   "ledb",
   "ledb-actix",
+  "ledb-macros",
 ]
 
 exclude = [

@@ -16,12 +16,14 @@ travis-ci = { repository = "katyo/ledb" }
 appveyor = { repository = "katyo/ledb" }
 
 [dependencies]
+proc-macro-hack = "0.4"
 byteorder = "1"
 ordered-float = "1"
 serde = "1"
 serde_derive = "1"
 serde_cbor = "0.9"
 ron = "0.4"
+ledb-macros = { path = "../ledb-macros" }
 lmdb-zero = "0.4"
 regex = "1"
 supercow = "0.1"
