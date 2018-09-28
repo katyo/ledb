@@ -164,7 +164,7 @@ Unique fields is pretty fit for sorting.
 | Internal Repr          | JSON Repr                     | Query (where)     | Description           |
 | -------------          | ---------------               | -------------     | -----------           |
 | Eq(value)              | {"$eq": value}                | field == val      | General Equality      |
-| In(Vec<value>)         | {"$in": [...values]}          | field in [...val] | One of                |
+| In(Vec<value>)         | {"$in": [...values]}          | field of [...val] | One of                |
 | Lt(value)              | {"$lt": value}                | field < val       | Less than             |
 | Le(value)              | {"$le": value}                | field <= val      | Less than or equal    |
 | Gt(value)              | {"$gt": value}                | field > val       | Greater than          |
@@ -184,6 +184,7 @@ query!(@filter field == 123)
 query!(@filter field.subfield != "abc")
 query!(@filter field > 123)
 query!(@filter field <= 456)
+query!(@filter field of [1, 2, 3])
 query!(@filter field in 123..456)   // [123 ... 456]
 query!(@filter field <in> 123..456) // (123 ... 456)
 query!(@filter field <in 123..456)  // (123 ... 456]
@@ -600,20 +601,20 @@ mod tests {
         fill_data(&c).unwrap();
 
         assert_eq!(
-            query!(find Value in c where s in ["abc", "xyz"])
+            query!(find Value in c where s of ["abc", "xyz"])
                 .unwrap()
                 .size_hint(),
             (2, Some(2))
         );
-        assert_found!(query!(find in c where s in ["abc", "xyz"] order >), 1, 4);
-        assert_found!(query!(find in c where n.a in ["t1", "t4"] order >), 2, 4, 5);
+        assert_found!(query!(find in c where s of ["abc", "xyz"] order >), 1, 4);
+        assert_found!(query!(find in c where n.a of ["t1", "t4"] order >), 2, 4, 5);
         assert_eq!(
-            query!(find Value in c where n.a in ["t2"] order <)
+            query!(find Value in c where n.a of ["t2"] order <)
                 .unwrap()
                 .size_hint(),
             (3, Some(3))
         );
-        assert_found!(query!(find in c where n.a in ["t2"] order desc), 6, 4, 2);
+        assert_found!(query!(find in c where n.a of ["t2"] order desc), 6, 4, 2);
     }
 
     #[test]
@@ -624,10 +625,10 @@ mod tests {
         mk_index(&c).unwrap();
         fill_data(&c).unwrap();
 
-        assert_found!(query!(find in c where i in [1, 5]), 2, 4, 6);
-        assert_found!(query!(find in c where i in [2]), 2, 3, 5);
-        assert_found!(query!(find in c where n.i in [1, 3]), 2, 4);
-        assert_found!(query!(find in c where n.i in [2] order <), 5, 3);
+        assert_found!(query!(find in c where i of [1, 5]), 2, 4, 6);
+        assert_found!(query!(find in c where i of [2]), 2, 3, 5);
+        assert_found!(query!(find in c where n.i of [1, 3]), 2, 4);
+        assert_found!(query!(find in c where n.i of [2] order <), 5, 3);
     }
 
     #[test]

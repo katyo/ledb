@@ -375,12 +375,20 @@ macro_rules! _query_impl {
         _query_impl!(@filter_comp_impl ! $($field).+, Eq, $crate::KeyData::from($value))
     );
     // out of set (not one of)
-    (@filter_comp $($field:ident).+ !in [$($value:expr),*]) => (
+    (@filter_comp $($field:ident).+ !of [$($value:expr),*]) => (
         _query_impl!(@filter_comp_impl ! $($field).+, In, _query_impl!(@vec $($crate::KeyData::from($value)),*))
     );
     // in set (one of)
-    (@filter_comp $($field:ident).+ in [$($value:expr),*]) => (
+    (@filter_comp $($field:ident).+ of [$($value:expr),*]) => (
         _query_impl!(@filter_comp_impl $($field).+, In, _query_impl!(@vec $($crate::KeyData::from($value)),*))
+    );
+    // out of set (not one of)
+    (@filter_comp $($field:ident).+ !of $value:expr) => (
+        _query_impl!(@filter_comp_impl ! $($field).+, In, $value.into_iter().map($crate::KeyData::from).collect())
+    );
+    // in set (one of)
+    (@filter_comp $($field:ident).+ of $value:expr) => (
+        _query_impl!(@filter_comp_impl $($field).+, In, $value.into_iter().map($crate::KeyData::from).collect())
     );
 
     // less than
@@ -629,12 +637,22 @@ mod test {
         #[test]
         fn comp_in() {
             assert_eq!(
-                query!(@filter f in [1, 2, 3]),
+                query!(@filter f of [1, 2, 3]),
                 json_val!({ "f": { "$in": [1, 2, 3] } })
             );
             assert_eq!(
-                query!(@filter f in ["a", "b", "c"]),
+                query!(@filter f !of [1, 2, 3]),
+                json_val!({ "$not": { "f": { "$in": [1, 2, 3] } } })
+            );
+            assert_eq!(
+                query!(@filter f of ["a", "b", "c"]),
                 json_val!({ "f": { "$in": ["a", "b", "c"] } })
+            );
+            // variants
+            let v = [1, 2, 3];
+            assert_eq!(
+                query!(@filter f of v),
+                json_val!({ "f": { "$in": v } })
             );
         }
 
@@ -742,7 +760,7 @@ mod test {
             let b_edge = 10;
 
             assert_eq!(
-                query!(@filter a in [1, 2, 3] && (b > b_edge || b < -b_edge)),
+                query!(@filter a of [1, 2, 3] && (b > b_edge || b < -b_edge)),
                 json_val!({ "$and": [ { "a": { "$in": [1, 2, 3] } }, { "$or": [ { "b": { "$gt": 10 } }, { "b": { "$lt": -10 } } ] } ] })
             );
         }
