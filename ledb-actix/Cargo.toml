@@ -17,6 +17,9 @@ appveyor = { repository = "katyo/ledb" }
 
 [[example]]
 name = "simple"
+
+[[example]]
+name = "server"
 required-features = ["web"]
 
 [dependencies]
