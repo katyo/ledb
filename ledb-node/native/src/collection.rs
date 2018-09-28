@@ -1,4 +1,6 @@
-use ledb::{Collection, Document, Filter, IndexKind, KeyType, Modify, Order, Primary, Value};
+use ledb::{
+    Collection, Document, Filter, Identifier, IndexKind, KeyType, Modify, Order, Primary, Value,
+};
 use neon::prelude::*;
 use neon_serde::{from_value, to_value};
 use std::u32;
@@ -229,6 +231,7 @@ declare_types! {
         method set_indexes(mut cx) {
             let indexes = cx.argument(0)?;
             let indexes: Vec<(String, IndexKind, KeyType)> = from_value(&mut cx, indexes)?;
+            let indexes: Vec<(Identifier, IndexKind, KeyType)> = indexes.into_iter().map(|(name, kind, key)| (name.into(), kind, key)).collect();
 
             let this = cx.this();
 
