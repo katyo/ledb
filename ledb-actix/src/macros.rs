@@ -49,7 +49,7 @@
 ///     );
 /// }
 /// ```
-#[macro_export(local_inner_macros)]
+#[macro_export]
 macro_rules! query {
     // call util
     (@$util:ident $($args:tt)*) => ( _query_impl!(@$util $($args)*) );

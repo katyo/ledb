@@ -169,11 +169,8 @@ DELETE /collection/$collection_name/$document_id
 
 extern crate actix;
 
-#[cfg(test)]
+#[allow(unused_imports)]
 #[macro_use(_query_impl, _query_extr)]
-extern crate ledb;
-
-#[cfg(not(test))]
 extern crate ledb;
 
 extern crate serde;

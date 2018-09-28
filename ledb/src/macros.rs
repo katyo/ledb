@@ -49,7 +49,7 @@
 ///     );
 /// }
 /// ```
-#[macro_export(local_inner_macros)]
+#[macro_export]
 macro_rules! query {
     // call util
     (@$util:ident $($args:tt)*) => ( _query_impl!(@$util $($args)*) );
@@ -70,7 +70,7 @@ macro_rules! _query_native {
 }
 
 // query DSL implementation
-#[macro_export(local_inner_macros)]
+#[macro_export]
 #[doc(hidden)]
 macro_rules! _query_impl {
     // ensure index
