@@ -522,32 +522,19 @@ macro_rules! _query_impl {
         $m.add(_query_impl!(@field $($field).+), $crate::Action::Toggle)
     );
     // splice helper
-    (@modify_add_splice $m:ident $($field:ident).+ [ - $start:tt .. - $delete:tt ] $($insert:tt)*) => (
-        $m.add(_query_impl!(@field $($field).+), $crate::Action::Splice(-$start, -$delete, _query_impl!(@modify_insert_splice $($insert)*)))
-    );
-    (@modify_add_splice $m:ident $($field:ident).+ [ - $start:tt .. $delete:tt ] $($insert:tt)*) => (
-        $m.add(_query_impl!(@field $($field).+), $crate::Action::Splice(-$start, $delete, _query_impl!(@modify_insert_splice $($insert)*)))
-    );
-    (@modify_add_splice $m:ident $($field:ident).+ [ $start:tt .. - $delete:tt ] $($insert:tt)*) => (
-        $m.add(_query_impl!(@field $($field).+), $crate::Action::Splice($start, -$delete, _query_impl!(@modify_insert_splice $($insert)*)))
-    );
-    (@modify_add_splice $m:ident $($field:ident).+ [ $start:tt .. $delete:tt ] $($insert:tt)*) => (
-        $m.add(_query_impl!(@field $($field).+), $crate::Action::Splice($start, $delete, _query_impl!(@modify_insert_splice $($insert)*)))
-    );
-    (@modify_add_splice $m:ident $($field:ident).+ [ - $start:tt .. ] $($insert:tt)*) => (
-        $m.add(_query_impl!(@field $($field).+), $crate::Action::Splice(-$start, -1, _query_impl!(@modify_insert_splice $($insert)*)))
-    );
-    (@modify_add_splice $m:ident $($field:ident).+ [ $start:tt .. ] $($insert:tt)*) => (
-        $m.add(_query_impl!(@field $($field).+), $crate::Action::Splice($start, -1, _query_impl!(@modify_insert_splice $($insert)*)))
-    );
-    (@modify_add_splice $m:ident $($field:ident).+ [ .. - $delete:tt ] $($insert:tt)*) => (
-        $m.add(_query_impl!(@field $($field).+), $crate::Action::Splice(0, -$delete, _query_impl!(@modify_insert_splice $($insert)*)))
-    );
-    (@modify_add_splice $m:ident $($field:ident).+ [ .. $delete:tt ] $($insert:tt)*) => (
-        $m.add(_query_impl!(@field $($field).+), $crate::Action::Splice(0, $delete, _query_impl!(@modify_insert_splice $($insert)*)))
-    );
-    (@modify_add_splice $m:ident $($field:ident).+ [ .. ] $($insert:tt)*) => (
-        $m.add(_query_impl!(@field $($field).+), $crate::Action::Splice(0, -1, _query_impl!(@modify_insert_splice $($insert)*)))
+    (@modify_add_splice $m:ident $($field:ident).+, [ $range:expr ], $($insert:tt)*) => (
+        {
+            use std::ops::{Bound, RangeBounds};
+            $m.add(_query_impl!(@field $($field).+), $crate::Action::Splice(match $range.start_bound() {
+                Bound::Unbounded => 0,
+                Bound::Included(start) => *start,
+                Bound::Excluded(start) => *start + 1,
+            }, match $range.end_bound() {
+                Bound::Unbounded => -1,
+                Bound::Included(end) => *end + 1,
+                Bound::Excluded(end) => *end,
+            }, _query_impl!(@modify_insert_splice $($insert)*)))
+        }
     );
     (@modify_insert_splice $insert:expr) => (
         $insert.iter().map(|elm| $crate::to_value(elm).unwrap()).collect()
@@ -557,11 +544,11 @@ macro_rules! _query_impl {
     );
     // remove from an array
     (@modify_action_apply $m:ident $($field:ident).+ [ $($range:tt)+ ] ~) => (
-        _query_impl!(@modify_add_splice $m $($field).+ [ $($range)+ ])
+        _query_impl!(@modify_add_splice $m $($field).+, [ $($range)+ ], )
     );
     // splice array
     (@modify_action_apply $m:ident $($field:ident).+ [ $($range:tt)+ ] = $insert:expr) => (
-        _query_impl!(@modify_add_splice $m $($field).+ [ $($range)+ ] $insert)
+        _query_impl!(@modify_add_splice $m $($field).+, [ $($range)+ ], $insert)
     );
     // merge object
     (@modify_action_apply $m:ident $($field:ident).+ ~= { $($obj:tt)+ }) => (
@@ -969,6 +956,19 @@ mod test {
             assert_eq!(
                 query!(@modify field[1..2]~),
                 json_val!({ "field": { "$splice": [1, 2] } })
+            );
+
+            let a = 3;
+            let b = 6;
+            assert_eq!(
+                query!(@modify field[a..b]~),
+                json_val!({ "field": { "$splice": [3, 6] } })
+            );
+
+            let range = 2..7;
+            assert_eq!(
+                query!(@modify field[range]~),
+                json_val!({ "field": { "$splice": [2, 7] } })
             );
 
             assert_eq!(
