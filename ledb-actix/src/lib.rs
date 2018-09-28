@@ -111,59 +111,91 @@ fn main() {
 }
 ```
 
-## REST interface
+## REST-interface
 
 *LEDB HTTP interface 0.1.0*
 
 ### Storage API
 
-# get database info
-GET /info
-# get database statistics
-GET /stats
+#### get database info
+
+__GET__ /info
+
+#### get database statistics
+
+__GET__ /stats
 
 ### Collection API
 
-# get list of collections
-GET /collection
-# create new empty collection
-POST /collection?name=$collection_name
-# drop collection with all documents
-DELETE /collection/$collection_name
+#### get list of collections
+
+__GET__ /collection
+
+#### create new empty collection
+
+__POST__ /collection?name=_$collection_name_
+
+#### drop collection with all documents
+
+__DELETE__ /collection/_$collection_name_
 
 ### Index API
 
-# get indexes of collection
-GET /collection/$collection_name/index
-# create new index for collection
-POST /collection/$collection_name/index?name=$field_path&kind=$index_kind&type=$key_type
-# drop index of collection
-DELETE /collection/$collection_name/document/$index_name
+#### get indexes of collection
+
+__GET__ /collection/_$collection_name_/index
+
+#### create new index for collection
+
+__POST__ /collection/_$collection_name_/index?name=_$field_name_&kind=_$index_kind_&type=_$key_type_
+
+#### drop index of collection
+
+__DELETE__ /collection/_$collection_name_/document/_$index_name_
 
 ### Document API
 
-# find documents using query
-GET /collection/$collection_name/document?filter=$query&order=$ordering&offset=10&length=10
-GET /collection/$collection_name?filter=$query&order=$ordering&offset=10&length=10
-# modify documents using query
-PUT /collection/$collection_name/document?filter=$query&modify=$modifications
-PATCH /collection/$collection_name?filter=$query&modify=$modifications
-# remove documents using query
-DELETE /collection/$collection_name/document?filter=$query
-PUT /collection/$collection_name?filter=$query
+#### find documents using query
 
-# insert new document
-POST /collection/$collection_name/document
-POST /collection/$collection_name
-# get document by id
-GET /collection/$collection_name/document/$document_id
-GET /collection/$collection_name/$document_id
-# replace document
-PUT /collection/$collection_name/document/$document_id
-PUT /collection/$collection_name/$document_id
-# remove document
-DELETE /collection/$collection_name/document/$document_id
-DELETE /collection/$collection_name/$document_id
+__GET__ /collection/_$collection_name_/document?filter=_$query_&order=_$ordering_&offset=_$skip_&length=_$take_
+
+__GET__ /collection/_$collection_name_?filter=_$query_&order=_$ordering_&offset=_$skip_&length=_$take_
+
+#### modify documents using query
+
+__PUT__ /collection/_$collection_name_/document?filter=_$query_&modify=_$modifications_
+
+__PATCH__ /collection/_$collection_name_?filter=_$query_&modify=_$modifications_
+
+#### remove documents using query
+
+__DELETE__ /collection/_$collection_name_/document?filter=_$query_
+
+__PUT__ /collection/_$collection_name_?filter=_$query_
+
+#### insert new document
+
+__POST__ /collection/_$collection_name_/document
+
+__POST__ /collection/_$collection_name_
+
+#### get document by id
+
+__GET__ /collection/_$collection_name_/document/_$document_id_
+
+__GET__ /collection/_$collection_name_/_$document_id_
+
+#### replace document
+
+__PUT__ /collection/_$collection_name_/document/_$document_id_
+
+__PUT__ /collection/_$collection_name_/_$document_id_
+
+#### remove document
+
+__DELETE__ /collection/_$collection_name_/document/_$document_id_
+
+__DELETE__ /collection/_$collection_name_/_$document_id_
 
 */
 

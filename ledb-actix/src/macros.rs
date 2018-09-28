@@ -1,54 +1,5 @@
 /// Unified query message macro
 ///
-/// ```ignore
-/// #[macro_use] extern crate serde_derive;
-/// #[macro_use] extern crate ledb_actix;
-/// use ledb::*;
-///
-/// #[derive(Serialize, Deserialize)]
-/// struct MyDoc {
-///   field: String,
-/// }
-///
-/// fn main() {
-///     let db_handle = Storage::open(".my_db").unwrap();
-///     let my_collection = db_handle.collection("my_collection").unwrap();
-///
-///     // ensure index
-///     assert!(
-///         query!(index for my_collection
-///             field Int,
-///             other_field Binary,
-///             field.subfield String unique,
-///         ).is_ok()
-///     );
-///
-///     // find query
-///     assert!(
-///         query!(find in my_collection where field == "abc").is_ok()
-///     );
-///
-///     // find query with ascending ordering by field
-///     assert!(
-///         query!(find in my_collection where [field == "abc"] order by other.field).is_ok()
-///     );
-///
-///     // find query with result document type with descending ordering by primary key
-///     assert!(
-///         query!(find MyDoc in my_collection where [field == "abc"] order ^).is_ok()
-///     );
-///
-///     // update query
-///     assert!(
-///         query!(update in my_collection modify [field = "def"] where [field == "abc"]).is_ok()
-///     );
-///
-///     // remove query
-///     assert!(
-///         query!(remove from my_collection where [field == "def"]).is_ok()
-///     );
-/// }
-/// ```
 #[macro_export]
 macro_rules! query {
     // call util

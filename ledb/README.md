@@ -12,18 +12,20 @@ The abbreviation *LEDB* may be treated as an Lightweight Embedded DB, also Low E
 
 * [ledb Crate on crates.io](https://crates.io/crates/ledb)
 * [ledb API Docs on docs.rs](https://docs.rs/ledb)
+* [ledb-actix Crate on crates.io](https://crates.io/crates/ledb-actix)
+* [ledb-actix API Docs on docs.rs](https://docs.rs/ledb-actix)
 
-## Features
+## Key features
 
-* Processing documents which implements `Serialize` and `Deserialize` traits from [serde](https://serde.rs/).
+* Processing JSON documents
 * Identifying documents using auto-incrementing integer primary keys.
-* Indexing any fields of documents using unique or duplicated keys.
+* Indexing fields of documents using unique or duplicated indexes.
 * Searching and ordering documents using indexed fields or primary key.
 * Selecting documents using complex filters with fields comparing and logical operations.
 * Updating documents using rich set of modifiers.
 * Storing documents into independent storages so called collections.
-* Flexible `query!` macro which helps write clear and readable queries.
-* Using [LMDB](https://en.wikipedia.org/wiki/Lightning_Memory-Mapped_Database) as backend for document storage and indexing engine.
+* Flexible JSON query filters similar to a [MongoDB](https://en.wikipedia.org/wiki/MongoDB).
+* The [LMDB](https://en.wikipedia.org/wiki/Lightning_Memory-Mapped_Database) as backend for document storage and indexing engine.
 
 ## Usage example
 

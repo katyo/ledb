@@ -68,6 +68,7 @@ impl Handler<GetInfo> for Storage {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct GetCollections;
 
+/// The list of collections
 pub type ListCollections = Vec<String>;
 
 impl Message for GetCollections {
@@ -88,6 +89,9 @@ pub fn EnsureCollection<C: Into<Identifier>>(coll: C) -> EnsureCollectionMsg {
     EnsureCollectionMsg(coll.into())
 }
 
+/// Ensure collection in storage
+///
+/// *NOTE: Use `EnsureCollection` function instead*
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EnsureCollectionMsg(Identifier);
 
@@ -114,6 +118,9 @@ pub fn DropCollection<C: Into<Identifier>>(coll: C) -> DropCollectionMsg {
     DropCollectionMsg(coll.into())
 }
 
+/// Drop collection from storage
+///
+/// *NOTE: Use `DropCollection` function instead*
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DropCollectionMsg(Identifier);
 
@@ -135,8 +142,12 @@ pub fn GetIndexes<C: Into<Identifier>>(coll: C) -> GetIndexesMsg {
     GetIndexesMsg(coll.into())
 }
 
+/// The list of indexes
 pub type ListIndexes = Vec<(Identifier, IndexKind, KeyType)>;
 
+/// Get indexes of collection
+///
+/// *NOTE: Use `GetIndexes` function instead*
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GetIndexesMsg(Identifier);
 
@@ -158,6 +169,9 @@ pub fn SetIndexes<C: Into<Identifier>, I: Into<ListIndexes>>(coll: C, indexes: I
     SetIndexesMsg(coll.into(), indexes.into())
 }
 
+/// Set indexes for collection
+///
+/// *NOTE: Use `SetIndexes` function instead*
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SetIndexesMsg(Identifier, ListIndexes);
 
@@ -179,6 +193,9 @@ pub fn EnsureIndex<C: Into<Identifier>, F: Into<Identifier>>(coll: C, field: F, 
     EnsureIndexMsg(coll.into(), field.into(), kind, key)
 }
 
+/// Ensure new index for collection
+///
+/// *NOTE: Use `EnsureIndex` for creating message*
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EnsureIndexMsg(Identifier, Identifier, IndexKind, KeyType);
 
@@ -200,6 +217,9 @@ pub fn DropIndex<C: Into<Identifier>, F: Into<Identifier>>(coll: C, field: F) ->
     DropIndexMsg(coll.into(), field.into())
 }
 
+/// Drop spicific index from collection
+///
+/// *NOTE: Use `DropIndex` for creating message*
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DropIndexMsg(Identifier, Identifier);
 
@@ -221,6 +241,9 @@ pub fn Insert<C: Into<Identifier>, T: Serialize>(coll: C, data: T) -> InsertMsg<
     InsertMsg(coll.into(), data)
 }
 
+/// Insert new document into collection
+///
+/// *NOTE: Use `Insert` for creating message*
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InsertMsg<T>(Identifier, T);
 
@@ -242,6 +265,9 @@ pub fn Get<C: Into<Identifier>, T: DeserializeOwned>(coll: C, id: Primary) -> Ge
     GetMsg(coll.into(), id, PhantomData)
 }
 
+/// Get the previously inserted document by primary key
+///
+/// *NOTE: Use `Get` for creating message*
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GetMsg<T>(Identifier, Primary, PhantomData<T>);
 
@@ -263,6 +289,9 @@ pub fn Put<C: Into<Identifier>, T: Serialize>(coll: C, data: Document<T>) -> Put
     PutMsg(coll.into(), data)
 }
 
+/// Put new version of the previously inserted document
+///
+/// *NOTE: Use `Put` for creating message*
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PutMsg<T>(Identifier, Document<T>);
 
@@ -284,6 +313,9 @@ pub fn Delete<C: Into<Identifier>>(coll: C, id: Primary) -> DeleteMsg {
     DeleteMsg(coll.into(), id)
 }
 
+/// Delete the previously inserted document
+///
+/// *NOTE: Use `Delete` for creating message*
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DeleteMsg(Identifier, Primary);
 
@@ -305,6 +337,9 @@ pub fn Update<C: Into<Identifier>>(coll: C, filter: Option<Filter>, modify: Modi
     UpdateMsg(coll.into(), filter, modify)
 }
 
+/// Update documents using filter and modifier
+///
+/// *NOTE: Use `Update` for creating message*
 #[derive(Debug, Clone, PartialEq)]
 pub struct UpdateMsg(Identifier, Option<Filter>, Modify);
 
@@ -326,6 +361,9 @@ pub fn Remove<C: Into<Identifier>>(coll: C, filter: Option<Filter>) -> RemoveMsg
     RemoveMsg(coll.into(), filter)
 }
 
+/// Remove documents using filter
+///
+/// *NOTE: Use `Remove` for creating message*
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RemoveMsg(Identifier, Option<Filter>);
 
@@ -347,6 +385,9 @@ pub fn Find<C: Into<Identifier>, T>(coll: C, filter: Option<Filter>, order: Orde
     FindMsg(coll.into(), filter, order, PhantomData)
 }
 
+/// Find documents using filter and ordering
+///
+/// *NOTE: Use `Find` for creating message*
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FindMsg<T>(Identifier, Option<Filter>, Order, PhantomData<T>);
 

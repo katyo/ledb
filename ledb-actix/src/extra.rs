@@ -2,6 +2,9 @@ use super::Storage;
 use actix::{dev::ToEnvelope, Addr, Handler, MailboxError, Message};
 use futures::{future::Either, Future};
 
+/// Helper for sending queries
+///
+/// This is alternative to `Addr<Storage>::send` which unwraps results of type `Result` using `Either` type for wrapping errors.
 pub trait StorageAddrExt<A> {
     fn get_storage_addr<M, T, E>(&self) -> &Addr<A>
     where
@@ -11,6 +14,7 @@ pub trait StorageAddrExt<A> {
         T: Send + 'static,
         E: Send + 'static;
 
+    /// Send query and get unwrapped result
     fn send_query<M, T, E>(
         &self,
         msg: M,
