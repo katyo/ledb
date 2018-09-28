@@ -30,22 +30,22 @@
 ///
 ///     // find query with ascending ordering by field
 ///     assert!(
-///         query!(find in my_collection where [field == "abc"] order by other.field).is_ok()
+///         query!(find in my_collection where field == "abc" order by other.field).is_ok()
 ///     );
 ///
 ///     // find query with result document type with descending ordering by primary key
 ///     assert!(
-///         query!(find MyDoc in my_collection where [field == "abc"] order ^).is_ok()
+///         query!(find MyDoc in my_collection where field == "abc" order ^).is_ok()
 ///     );
 ///
 ///     // update query
 ///     assert!(
-///         query!(update in my_collection modify [field = "def"] where [field == "abc"]).is_ok()
+///         query!(update in my_collection modify field = "def" where [field == "abc"]).is_ok()
 ///     );
 ///
 ///     // remove query
 ///     assert!(
-///         query!(remove from my_collection where [field == "def"]).is_ok()
+///         query!(remove from my_collection where field == "def").is_ok()
 ///     );
 /// }
 /// ```
@@ -619,6 +619,11 @@ mod test {
                 query!(@filter f != "abc"),
                 json_val!({ "$not": { "f": { "$eq": "abc" } } })
             );
+            // variants
+            let v = 123;
+            assert_eq!(query!(@filter f == v), json_val!({ "f": { "$eq": v } }));
+            assert_eq!(query!(@filter f == (v + 1)), json_val!({ "f": { "$eq": (v + 1) } }));
+            assert_eq!(query!(@filter f == {v * 2}), json_val!({ "f": { "$eq": (v * 2) } }));
         }
 
         #[test]
