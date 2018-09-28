@@ -24,7 +24,7 @@ serde = "1"
 serde_derive = { version = "1", optional = true }
 serde_with = { version = "0.2", optional = true, features = ["json"] }
 ledb = { path = "../ledb" }
-futures = { version = "0.1", optional = true }
+futures = "0.1"
 actix = "0.7"
 actix-web = { version = "0.7", optional = true }
 
@@ -37,6 +37,6 @@ actix-web = "0.7"
 pretty_env_logger = "0.1"
 
 [features]
-web = ["futures", "serde_derive", "serde_with", "actix-web"]
 default = []
+web = ["serde_derive", "serde_with", "actix-web"]
 

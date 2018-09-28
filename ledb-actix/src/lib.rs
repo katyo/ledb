@@ -94,7 +94,6 @@ extern crate ledb;
 
 extern crate serde;
 
-#[cfg(any(test, feature = "web"))]
 extern crate futures;
 
 #[cfg(test)]
@@ -115,6 +114,7 @@ extern crate serde_with;
 extern crate actix_web;
 
 mod actor;
+mod extra;
 mod macros;
 #[cfg(feature = "web")]
 mod scope;
@@ -125,6 +125,7 @@ pub use ledb::{
 };
 
 pub use actor::*;
+pub use extra::*;
 
 #[cfg(feature = "web")]
 pub use scope::*;
