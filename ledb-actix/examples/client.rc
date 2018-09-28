@@ -1,0 +1,56 @@
+# -*- mode: restclient -*-
+:url = http://localhost:8888
+
+# get list collections
+GET :url/collection
+
+# create collection
+POST :url/collection?name=user
+
+# insert document
+POST :url/collection/user/document
+Content-Type: application/json
+
+{"name": "kayo", "role": "Full-stack developer"}
+
+# get document
+GET :url/collection/user/document/1
+
+# Ensure index (unique name)
+POST :url/collection/user/index?name=name&kind=uni&type=string
+
+# Ensure index (prefs)
+POST :url/collection/user/index?name=prefs&type=string
+
+# Drop index
+DELETE :url/collection/user/index/name
+
+# put new version of document
+PUT :url/collection/user/document/1
+Content-Type: application/json
+
+{"name": "kayo", "role": "Full-stack developer", "prefs": ["emacs", "nixos"] }
+
+# insert document
+POST :url/collection/user/document
+Content-Type: application/json
+
+{"name": "alien", "role": "Tester"}
+
+# insert document
+POST :url/collection/user/document
+Content-Type: application/json
+
+{"name": "ivan", "role": "Tester", "prefs": ["emacs", "debian"]}
+
+# insert document
+POST :url/collection/user/document
+Content-Type: application/json
+
+{"name": "strapper", "role": "Designer", "prefs": ["vim", "debian"]}
+
+# find by prefs
+GET :url/collection/user/document?filter=%7B%22prefs%22:%7B%22$eq%22:%22debian%22%7D%7D
+
+# remove document
+DELETE :url/collection/user/document/1

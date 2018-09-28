@@ -5,9 +5,8 @@ authors = ["Kayo <kayo@illumium.org>"]
 license = "MIT"
 readme = "README.md"
 repository = "https://github.com/katyo/ledb"
-documentation = "https://docs.rs/ledb"
-homepage = "https://github.com/katyo/ledb"
-keywords = ["document storage", "persistence", "json", "cbor", "lmdb", "btree"]
+homepage = "https://github.com/katyo/ledb/tree/master/ledb"
+keywords = ["storage", "json", "cbor", "lmdb", "btree"]
 categories = ["database"]
 description = "Lightweight embedded database built over LMDB"
 

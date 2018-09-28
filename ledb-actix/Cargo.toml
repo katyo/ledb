@@ -5,9 +5,8 @@ authors = ["Kayo Phoenix <kayo@illumium.org>"]
 license = "MIT"
 readme = "README.md"
 repository = "https://github.com/katyo/ledb"
-documentation = "https://docs.rs/ledb-actix"
-homepage = "https://github.com/katyo/ledb"
-keywords = ["actor", "document storage", "persistence", "json", "cbor", "lmdb", "btree"]
+homepage = "https://github.com/katyo/ledb/tree/master/ledb-actix"
+keywords = ["actor", "rest", "storage", "json", "lmdb"]
 categories = ["database", "web", "actor"]
 description = "LEDB Actor for Actix actor framework and storage REST-interface"
 
@@ -26,7 +25,7 @@ required-features = ["web"]
 serde = "1"
 serde_derive = { version = "1", optional = true }
 serde_with = { version = "0.2", optional = true, features = ["json"] }
-ledb = { path = "../ledb" }
+ledb = { version = "0.1.0", path = "../ledb" }
 futures = "0.1"
 actix = "0.7"
 actix-web = { version = "0.7", optional = true }

@@ -15,6 +15,7 @@ neon-build = "0.2.0"
 
 [dependencies]
 #ledb = { path = "../../ledb" }
-ledb = { git = "https://github.com/katyo/ledb" }
+#ledb = { git = "https://github.com/katyo/ledb" }
+ledb = "0.1.0"
 neon = "0.2.0"
 neon-serde = { git = "https://github.com/apendleton/neon-serde", branch = "oh-point-two" }
