@@ -1,16 +1,90 @@
-/*!
+# Actor and REST interface for LEDB
 
-# LEDB Storage actor and REST interface
+[![License: MIT](https://img.shields.io/badge/License-MIT-brightgreen.svg)](https://opensource.org/licenses/MIT)
+[![Travis-CI Build Status](https://travis-ci.org/katyo/ledb.svg?branch=master)](https://travis-ci.org/katyo/ledb)
+[![Appveyor Build status](https://ci.appveyor.com/api/projects/status/1wrmhivii22emfxg)](https://ci.appveyor.com/project/katyo/ledb)
 
-An implementation of storage actor for [Actix](https://actix.rs/).
+The **LEDB** is an attempt to implement simple but efficient, lightweight but powerful document storage.
 
-*NOTE: Use `features = ["web"]` to enable an optional scoped REST-interface for **actix-web**.*
+The abbreviation *LEDB* may be treated as an Lightweight Embedded DB, also Low End DB, also Literium Engine DB, also LitE DB, and so on.
 
-## Storage actor
+## Links
 
-Usage example:
+* [ledb-actix Crate on crates.io](https://crates.io/crates/ledb-actix)
+* [ledb-actix API Docs on docs.rs](https://docs.rs/ledb-actix)
 
-```
+## REST-interface
+
+*LEDB HTTP interface 0.1.0*
+
+### Storage API
+
+    # get database info
+    GET /info
+    # get database statistics
+    GET /stats
+
+### Collection API
+
+    # get list of collections
+    GET /collection
+    # create new empty collection
+    POST /collection?name=$collection_name
+    # drop collection with all documents
+    DELETE /collection/$collection_name
+
+### Index API
+
+    # get indexes of collection
+    GET /collection/$collection_name/index
+    # create new index for collection
+    POST /collection/$collection_name/index?name=$field_path&kind=$index_kind&type=$key_type
+    # drop index of collection
+    DELETE /collection/$collection_name/document/$index_name
+
+### Document API
+
+    # find documents using query
+    GET /collection/$collection_name/document?filter=$query&order=$ordering&offset=10&length=10
+    GET /collection/$collection_name?filter=$query&order=$ordering&offset=10&length=10
+    # modify documents using query
+    PUT /collection/$collection_name/document?filter=$query&modify=$modifications
+    PATCH /collection/$collection_name?filter=$query&modify=$modifications
+    # remove documents using query
+    DELETE /collection/$collection_name/document?filter=$query
+    PUT /collection/$collection_name?filter=$query
+
+    # insert new document
+    POST /collection/$collection_name/document
+    POST /collection/$collection_name
+    # get document by id
+    GET /collection/$collection_name/document/$document_id
+    GET /collection/$collection_name/$document_id
+    # replace document
+    PUT /collection/$collection_name/document/$document_id
+    PUT /collection/$collection_name/$document_id
+    # remove document
+    DELETE /collection/$collection_name/document/$document_id
+    DELETE /collection/$collection_name/$document_id
+
+### Supported index kinds
+
+* uni -- Unique key
+* dup -- Duplicated keys
+
+### Supported key types
+
+* int    -- 64-bit signed integer
+* float  -- 64-bit floating point number
+* bool   -- boolean value
+* string -- UTF-8 string
+* binary -- binary data
+
+## Actor
+
+### Usage example
+
+```rust
 extern crate actix;
 extern crate futures;
 extern crate tokio;
@@ -110,106 +184,3 @@ fn main() {
     });
 }
 ```
-
-## REST interface
-
-*LEDB HTTP interface 0.1.0*
-
-### Storage API
-
-# get database info
-GET /info
-# get database statistics
-GET /stats
-
-### Collection API
-
-# get list of collections
-GET /collection
-# create new empty collection
-POST /collection?name=$collection_name
-# drop collection with all documents
-DELETE /collection/$collection_name
-
-### Index API
-
-# get indexes of collection
-GET /collection/$collection_name/index
-# create new index for collection
-POST /collection/$collection_name/index?name=$field_path&kind=$index_kind&type=$key_type
-# drop index of collection
-DELETE /collection/$collection_name/document/$index_name
-
-### Document API
-
-# find documents using query
-GET /collection/$collection_name/document?filter=$query&order=$ordering&offset=10&length=10
-GET /collection/$collection_name?filter=$query&order=$ordering&offset=10&length=10
-# modify documents using query
-PUT /collection/$collection_name/document?filter=$query&modify=$modifications
-PATCH /collection/$collection_name?filter=$query&modify=$modifications
-# remove documents using query
-DELETE /collection/$collection_name/document?filter=$query
-PUT /collection/$collection_name?filter=$query
-
-# insert new document
-POST /collection/$collection_name/document
-POST /collection/$collection_name
-# get document by id
-GET /collection/$collection_name/document/$document_id
-GET /collection/$collection_name/$document_id
-# replace document
-PUT /collection/$collection_name/document/$document_id
-PUT /collection/$collection_name/$document_id
-# remove document
-DELETE /collection/$collection_name/document/$document_id
-DELETE /collection/$collection_name/$document_id
-
-*/
-
-extern crate actix;
-
-#[cfg(test)]
-#[macro_use(_query_impl, _query_extr)]
-extern crate ledb;
-
-#[cfg(not(test))]
-extern crate ledb;
-
-extern crate serde;
-
-extern crate futures;
-
-#[cfg(test)]
-extern crate tokio;
-
-#[cfg(any(test, feature = "web"))]
-#[macro_use]
-extern crate serde_derive;
-
-#[cfg(test)]
-#[macro_use]
-extern crate serde_json;
-
-#[cfg(feature = "web")]
-extern crate serde_with;
-
-#[cfg(feature = "web")]
-extern crate actix_web;
-
-mod actor;
-mod extra;
-mod macros;
-#[cfg(feature = "web")]
-mod scope;
-
-pub use ledb::{
-    Action, Comp, Cond, Document, DocumentsIterator, Filter, Identifier, IndexKind, Info, KeyData,
-    KeyType, Modify, Order, OrderKind, Primary, Stats, Value,
-};
-
-pub use actor::*;
-pub use extra::*;
-
-#[cfg(feature = "web")]
-pub use scope::*;

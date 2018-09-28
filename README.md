@@ -14,7 +14,7 @@ This is a basic library which implements document storage and query functionalit
 
 See the [README](ledb/README.md).
 
-## Actor for documents storage (`ledb-actix` crate)
+## Actor and REST-interface for documents storage (`ledb-actix` crate)
 
 This is an actor which helps interacting with database in applications which builts on the [actix](https://actix.rs/) actor framework.
 
