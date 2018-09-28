@@ -15,6 +15,10 @@ description = "LEDB Actor for Actix actor framework and actix-web storage server
 travis-ci = { repository = "katyo/ledb" }
 appveyor = { repository = "katyo/ledb" }
 
+[[example]]
+name = "simple"
+required-features = ["web"]
+
 [dependencies]
 serde = "1"
 serde_derive = { version = "1", optional = true }
@@ -33,5 +37,6 @@ actix-web = "0.7"
 pretty_env_logger = "0.1"
 
 [features]
-default = ["web"]
 web = ["futures", "serde_derive", "serde_with", "actix-web"]
+default = []
+

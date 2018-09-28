@@ -4,7 +4,7 @@
 
 An implementation of storage actor for [Actix](https://actix.rs/).
 
-Use `features = []` to disable an optional scoped REST-interface for *actix-web*.
+*NOTE: Use `features = ["web"]` to enable an optional scoped REST-interface for **actix-web**.*
 
 ## Storage actor
 
