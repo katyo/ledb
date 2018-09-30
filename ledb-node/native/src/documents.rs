@@ -131,7 +131,7 @@ declare_types! {
                 let guard = cx.lock();
                 let this = this.borrow(&guard);
                 if let Some(iter) = &this.0 {
-                    Ok(iter.size_hint().0)
+                    Ok(iter.len())
                 } else {
                     Err(INVALID_ITERATOR)
                 }

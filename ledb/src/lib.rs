@@ -533,10 +533,7 @@ mod tests {
         mk_index(&c).unwrap();
         fill_data(&c).unwrap();
 
-        assert_eq!(
-            query!(find Value in c order by s >).unwrap().size_hint(),
-            (6, Some(6))
-        );
+        assert_eq!(query!(find Value in c order by s >).unwrap().len(), 6);
         assert_found!(query!(find in c order by s >), 3, 5, 6, 1, 2, 4);
         assert_found!(query!(find in c order by s <), 4, 2, 1, 6, 5, 3);
     }
@@ -549,19 +546,14 @@ mod tests {
         mk_index(&c).unwrap();
         fill_data(&c).unwrap();
 
-        assert_eq!(
-            query!(find Value in c where s == "xyz")
-                .unwrap()
-                .size_hint(),
-            (1, Some(1))
-        );
+        assert_eq!(query!(find Value in c where s == "xyz").unwrap().len(), 1);
         assert_found!(query!(find in c where s == "xyz" order >), 4);
         assert_found!(query!(find in c where n.a == "t1"), 2, 5);
         assert_eq!(
             query!(find Value in c where n.a == "t2" order <)
                 .unwrap()
-                .size_hint(),
-            (3, Some(3))
+                .len(),
+            3
         );
         assert_found!(query!(find in c where n.a == "t2" order desc), 6, 4, 2);
     }
@@ -603,16 +595,16 @@ mod tests {
         assert_eq!(
             query!(find Value in c where s of ["abc", "xyz"])
                 .unwrap()
-                .size_hint(),
-            (2, Some(2))
+                .len(),
+            2
         );
         assert_found!(query!(find in c where s of ["abc", "xyz"] order >), 1, 4);
         assert_found!(query!(find in c where n.a of ["t1", "t4"] order >), 2, 4, 5);
         assert_eq!(
             query!(find Value in c where n.a of ["t2"] order <)
                 .unwrap()
-                .size_hint(),
-            (3, Some(3))
+                .len(),
+            3
         );
         assert_found!(query!(find in c where n.a of ["t2"] order desc), 6, 4, 2);
     }

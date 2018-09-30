@@ -113,7 +113,7 @@ impl Collection {
     ///
     /// Iterator across found documents will be returned.
     ///
-    /// You can use `DocumentsIterator::size_hint()` for getting the total number of found documents.
+    /// You can use `DocumentsIterator::len()` for getting the total number of found documents.
     ///
     pub fn find<T: DeserializeOwned>(
         &self,
@@ -762,7 +762,7 @@ impl Iterator for PrimaryIterator {
 ///
 /// You can use that to extract documents contents
 ///
-/// The `DocumentsIterator::size_hint()` method gets actual number of found documents.
+/// The `DocumentsIterator::len()` method gets total number of found documents.
 ///
 pub struct DocumentsIterator<T> {
     storage: Storage,
@@ -811,6 +811,8 @@ where
         self.ids_iter.size_hint()
     }
 }
+
+impl<T> ExactSizeIterator for DocumentsIterator<T> where T: DeserializeOwned {}
 
 fn order_primary_asc(a: &Primary, b: &Primary) -> Ordering {
     a.cmp(b)
