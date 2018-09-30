@@ -1,6 +1,6 @@
 [package]
 name = "ledb-node"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Kayo <kayo@illumium.org>"]
 license = "MIT"
 build = "build.rs"
@@ -15,7 +15,12 @@ neon-build = "0.2.0"
 
 [dependencies]
 #ledb = { path = "../../ledb" }
-#ledb = { git = "https://github.com/katyo/ledb" }
-ledb = "0.1.0"
+ledb = { git = "https://github.com/katyo/ledb" }
+#ledb = "0.1.1"
 neon = "0.2.0"
 neon-serde = { git = "https://github.com/apendleton/neon-serde", branch = "oh-point-two" }
+
+[profile.release]
+
+[build]
+rustflags = ["-C", "link-arg=-Wl,--print-gc-sections"]
