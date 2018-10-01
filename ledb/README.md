@@ -4,7 +4,7 @@
 [![Travis-CI Build Status](https://travis-ci.org/katyo/ledb.svg?branch=master)](https://travis-ci.org/katyo/ledb)
 [![Appveyor Build status](https://ci.appveyor.com/api/projects/status/1wrmhivii22emfxg)](https://ci.appveyor.com/project/katyo/ledb)
 [![Crates.io Package](https://img.shields.io/crates/v/ledb.svg?style=popout)](https://crates.io/crates/ledb)
-[![Docs.rs API Documentation](https://docs.rs/ledb/badge.svg)](https://docs.rs/crate/ledb)
+[![Docs.rs API Documentation](https://docs.rs/ledb/badge.svg)](https://docs.rs/ledb)
 
 The **LEDB** is an attempt to implement simple but efficient, lightweight but powerful document storage.
 
@@ -13,21 +13,22 @@ The abbreviation *LEDB* may be treated as an Lightweight Embedded DB, also Low E
 ## Links
 
 * [ledb Crate on crates.io](https://crates.io/crates/ledb)
-* [ledb API Docs on docs.rs](https://docs.rs/crate/ledb)
+* [ledb API Docs on docs.rs](https://docs.rs/ledb)
 * [ledb-actix Crate on crates.io](https://crates.io/crates/ledb-actix)
-* [ledb-actix API Docs on docs.rs](https://docs.rs/crate/ledb-actix)
+* [ledb-actix API Docs on docs.rs](https://docs.rs/ledb-actix)
+* [ledb NodeJS addon on npmjs.com](https://npmjs.com/package/ledb)
 
 ## Key features
 
-* Processing JSON documents
+* Processing documents which implements `Serialize` and `Deserialize` traits from [serde](https://serde.rs/).
 * Identifying documents using auto-incrementing integer primary keys.
-* Indexing fields of documents using unique or duplicated indexes.
+* Indexing any fields of documents using unique or duplicated keys.
 * Searching and ordering documents using indexed fields or primary key.
 * Selecting documents using complex filters with fields comparing and logical operations.
 * Updating documents using rich set of modifiers.
 * Storing documents into independent storages so called collections.
-* Flexible JSON query filters similar to a [MongoDB](https://en.wikipedia.org/wiki/MongoDB).
-* The [LMDB](https://en.wikipedia.org/wiki/Lightning_Memory-Mapped_Database) as backend for document storage and indexing engine.
+* Flexible `query!` macro which helps write clear and readable queries.
+* Using [LMDB](https://en.wikipedia.org/wiki/Lightning_Memory-Mapped_Database) as backend for document storage and indexing engine.
 
 ## Usage example
 

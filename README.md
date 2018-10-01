@@ -4,7 +4,7 @@
 [![Travis-CI Build Status](https://travis-ci.org/katyo/ledb.svg?branch=master)](https://travis-ci.org/katyo/ledb)
 [![Appveyor Build status](https://ci.appveyor.com/api/projects/status/1wrmhivii22emfxg)](https://ci.appveyor.com/project/katyo/ledb)
 [![Crates.io Package](https://img.shields.io/crates/v/ledb.svg?style=popout)](https://crates.io/crates/ledb)
-[![Docs.rs API Documentation](https://docs.rs/ledb/badge.svg)](https://docs.rs/crate/ledb)
+[![Docs.rs API Documentation](https://docs.rs/ledb/badge.svg)](https://docs.rs/ledb)
 
 The **LEDB** is an attempt to implement simple but efficient, lightweight but powerful document storage.
 

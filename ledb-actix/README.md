@@ -4,7 +4,7 @@
 [![Travis-CI Build Status](https://travis-ci.org/katyo/ledb.svg?branch=master)](https://travis-ci.org/katyo/ledb)
 [![Appveyor Build status](https://ci.appveyor.com/api/projects/status/1wrmhivii22emfxg)](https://ci.appveyor.com/project/katyo/ledb)
 [![Crates.io Package](https://img.shields.io/crates/v/ledb-actix.svg?style=popout)](https://crates.io/crates/ledb-actix)
-[![Docs.rs API Documentation](https://docs.rs/ledb-actix/badge.svg)](https://docs.rs/crate/ledb-actix)
+[![Docs.rs API Documentation](https://docs.rs/ledb-actix/badge.svg)](https://docs.rs/ledb-actix)
 
 The **LEDB** is an attempt to implement simple but efficient, lightweight but powerful document storage.
 
@@ -13,9 +13,9 @@ The abbreviation *LEDB* may be treated as an Lightweight Embedded DB, also Low E
 ## Links
 
 * [ledb-actix Crate on crates.io](https://crates.io/crates/ledb-actix)
-* [ledb-actix API Docs on docs.rs](https://docs.rs/crate/ledb-actix)
+* [ledb-actix API Docs on docs.rs](https://docs.rs/ledb-actix)
 * [ledb Crate on crates.io](https://crates.io/crates/ledb)
-* [ledb API Docs on docs.rs](https://docs.rs/crate/ledb)
+* [ledb API Docs on docs.rs](https://docs.rs/ledb)
 
 ## REST-interface
 
