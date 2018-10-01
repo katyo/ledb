@@ -30,7 +30,7 @@ extern crate pretty_env_logger;
 
 use actix::System;
 use futures::Future;
-use ledb_actix::{Storage, StorageAddrExt};
+use ledb_actix::{Storage, Options, StorageAddrExt};
 use serde_json::from_value;
 use std::env;
 use tokio::spawn;
@@ -49,7 +49,7 @@ fn main() {
     let _ = std::fs::remove_dir_all("example_db");
 
     System::run(|| {
-        let addr = Storage::new("example_db").unwrap().start(1);
+        let addr = Storage::new("example_db", Options::default()).unwrap().start(1);
 
         spawn(
             addr.clone().send_query(query!(
@@ -234,7 +234,7 @@ mod scope;
 
 pub use ledb::{
     Action, Comp, Cond, Document, DocumentsIterator, Filter, Identifier, IndexKind, Info, KeyData,
-    KeyType, Modify, Order, OrderKind, Primary, Stats, Value,
+    KeyType, Modify, Options, Order, OrderKind, Primary, Stats, Value,
 };
 
 pub use actor::*;

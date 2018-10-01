@@ -1,8 +1,8 @@
 use dirs::home_dir;
 use dunce::canonicalize;
 use lmdb::{
-    self, open::Flags as OpenFlags, Cursor, CursorIter, Database, DatabaseOptions, EnvBuilder,
-    Environment, MaybeOwned, ReadTransaction,
+    self, open as OpenFlag, open::Flags as OpenFlags, Cursor, CursorIter, Database,
+    DatabaseOptions, EnvBuilder, Environment, MaybeOwned, ReadTransaction,
 };
 use ron::de::from_str as from_db_name;
 use std::collections::HashMap;
@@ -90,6 +90,131 @@ impl From<lmdb::EnvInfo> for Info {
     }
 }
 
+/// Database options
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct Options {
+    // options
+    #[serde(default)]
+    map_size: Option<usize>,
+    #[serde(default)]
+    max_readers: Option<u32>,
+    #[serde(default)]
+    max_dbs: Option<u32>,
+    // flags
+    #[serde(default)]
+    map_async: Option<bool>,
+    #[serde(default)]
+    no_lock: Option<bool>,
+    #[serde(default)]
+    no_mem_init: Option<bool>,
+    #[serde(default)]
+    no_meta_sync: Option<bool>,
+    #[serde(default)]
+    no_read_ahead: Option<bool>,
+    #[serde(default)]
+    no_sub_dir: Option<bool>,
+    #[serde(default)]
+    no_sync: Option<bool>,
+    #[serde(default)]
+    no_tls: Option<bool>,
+    #[serde(default)]
+    read_only: Option<bool>,
+    #[serde(default)]
+    write_map: Option<bool>,
+}
+
+impl Options {
+    fn env_builder(&self) -> Result<EnvBuilder> {
+        let mut bld = EnvBuilder::new()?;
+
+        bld.set_mapsize(self.map_size.unwrap_or(16 << 20))
+            .wrap_err()?;
+        bld.set_maxreaders(self.max_readers.unwrap_or(126))
+            .wrap_err()?;
+        bld.set_maxdbs(self.max_dbs.unwrap_or(128)).wrap_err()?;
+
+        Ok(bld)
+    }
+
+    fn open_flags(&self) -> OpenFlags {
+        self.fill_flags(None)
+    }
+
+    fn config_env(&self, env: &Environment) -> Result<()> {
+        if let Some(val) = self.map_size {
+            unsafe {
+                env.set_mapsize(val).wrap_err()?;
+            }
+        }
+
+        unsafe {
+            env.set_flags(self.fill_flags(Some(true)), true)
+                .wrap_err()?;
+            env.set_flags(self.fill_flags(Some(false)), false)
+                .wrap_err()?;
+        }
+
+        Ok(())
+    }
+
+    fn fill_flags(&self, onoff: Option<bool>) -> OpenFlags {
+        let mut flags = OpenFlags::empty();
+
+        if let Some(flag) = self.map_async {
+            if onoff.map(|onoff| onoff == flag).unwrap_or(true) {
+                flags.set(OpenFlag::MAPASYNC, flag);
+            }
+        }
+        if let Some(flag) = self.no_lock {
+            if onoff.map(|onoff| onoff == flag).unwrap_or(true) {
+                flags.set(OpenFlag::NOLOCK, flag);
+            }
+        }
+        if let Some(flag) = self.no_mem_init {
+            if onoff.map(|onoff| onoff == flag).unwrap_or(true) {
+                flags.set(OpenFlag::NOMEMINIT, flag);
+            }
+        }
+        if let Some(flag) = self.no_meta_sync {
+            if onoff.map(|onoff| onoff == flag).unwrap_or(true) {
+                flags.set(OpenFlag::NOMETASYNC, flag);
+            }
+        }
+        if let Some(flag) = self.no_read_ahead {
+            if onoff.map(|onoff| onoff == flag).unwrap_or(true) {
+                flags.set(OpenFlag::NORDAHEAD, flag);
+            }
+        }
+        if let Some(flag) = self.no_sub_dir {
+            if onoff.map(|onoff| onoff == flag).unwrap_or(true) {
+                flags.set(OpenFlag::NOSUBDIR, flag);
+            }
+        }
+        if let Some(flag) = self.no_sync {
+            if onoff.map(|onoff| onoff == flag).unwrap_or(true) {
+                flags.set(OpenFlag::NOSYNC, flag);
+            }
+        }
+        if let Some(flag) = self.no_tls {
+            if onoff.map(|onoff| onoff == flag).unwrap_or(true) {
+                flags.set(OpenFlag::NOTLS, flag);
+            }
+        }
+        if let Some(flag) = self.read_only {
+            if onoff.map(|onoff| onoff == flag).unwrap_or(true) {
+                flags.set(OpenFlag::RDONLY, flag);
+            }
+        }
+        if let Some(flag) = self.write_map {
+            if onoff.map(|onoff| onoff == flag).unwrap_or(true) {
+                flags.set(OpenFlag::WRITEMAP, flag);
+            }
+        }
+
+        flags
+    }
+}
+
 pub(crate) struct StorageData {
     path: PathBuf,
     env: Environment,
@@ -111,18 +236,19 @@ impl Storage {
     /// You can open multiple storages using same path, actually all of them will use same storage instance.
     /// Also you can clone storage instance, share it and and send it to another threads.
     ///
-    pub fn new<P: AsRef<Path>>(path: P) -> Result<Self> {
+    pub fn new<P: AsRef<Path>>(path: P, opts: Options) -> Result<Self> {
         let path = realpath(path.as_ref())?;
 
         if let Some(storage) = Pool::get(&path)? {
+            opts.config_env(&storage.env)?;
             Ok(Storage(storage))
         } else {
-            Self::open(path)
+            Self::open(path, opts)
         }
     }
 
-    fn open(path: PathBuf) -> Result<Self> {
-        let env = open_env(&path)?;
+    fn open(path: PathBuf, opts: Options) -> Result<Self> {
+        let env = open_env(&path, opts)?;
 
         let gen = SerialGenerator::new();
 
@@ -334,15 +460,15 @@ fn load_databases(
     ))
 }
 
-fn open_env(path: &Path) -> Result<Environment> {
+fn open_env(path: &Path, opts: Options) -> Result<Environment> {
     let path = path.to_str().ok_or("Invalid db path").wrap_err()?;
 
-    let mut bld = EnvBuilder::new().wrap_err()?;
-    bld.set_maxdbs(1023).wrap_err()?;
+    let bld = opts.env_builder()?;
+    let flags = opts.open_flags();
 
     create_dir_all(&path).wrap_err()?;
 
-    unsafe { bld.open(path, OpenFlags::empty(), 0o600) }.wrap_err()
+    unsafe { bld.open(path, flags, 0o600) }.wrap_err()
 }
 
 fn realpath(path: &Path) -> Result<PathBuf> {

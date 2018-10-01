@@ -1,14 +1,19 @@
 use super::JsCollection;
-use ledb::Storage;
+use ledb::{Options, Storage};
 use neon::prelude::*;
-use neon_serde::to_value;
+use neon_serde::{from_value, to_value};
 
 declare_types! {
     /// A storage class
     pub class JsStorage for Storage {
         init(mut cx) {
             let path = cx.argument::<JsString>(0)?.value();
-            Ok(js_try!(cx, Storage::new(&path)))
+            let opts = if let Some(opts) = cx.argument_opt(1) {
+                from_value(&mut cx, opts)?
+            } else {
+                Options::default()
+            };
+            Ok(js_try!(cx, Storage::new(&path, opts)))
         }
 
         method get_stats(mut cx) {

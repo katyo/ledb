@@ -1,4 +1,4 @@
-use super::{Result, Storage};
+use super::{Options, Result, Storage};
 use std::fs::remove_dir_all;
 use std::path::Path;
 
@@ -41,5 +41,5 @@ pub fn test_db(id: &'static str) -> Result<Storage> {
 
     let _ = remove_dir_all(&path);
 
-    Storage::new(&path)
+    Storage::new(&path, Options::default())
 }

@@ -6,7 +6,7 @@ use actix::{Actor, Addr, Message, SyncContext, SyncArbiter, Handler};
 
 use super::{
     Document, DocumentsIterator, Filter, Identifier, IndexKind, Info,
-    KeyType, Modify, Order, Primary, Stats,
+    KeyType, Modify, Order, Primary, Stats, Options,
 };
 
 /// Storage actor
@@ -18,8 +18,8 @@ impl Storage {
     ///
     /// You can create multiple storage adapters using same path, actually all of them will use same storage instance.
     ///
-    pub fn new<P: AsRef<Path>>(path: P) -> LeResult<Self> {
-        Ok(Storage(LeStorage::new(path)?))
+    pub fn new<P: AsRef<Path>>(path: P, opts: Options) -> LeResult<Self> {
+        Ok(Storage(LeStorage::new(path, opts)?))
     }
 
     /// Start the actor with number of threads
@@ -410,7 +410,7 @@ mod tests {
     use futures::{Future};
     use tokio::{spawn};
     use actix::{System};
-    use super::{Storage, EnsureIndex, Insert, Find, IndexKind, KeyType};
+    use super::{Storage, Options, EnsureIndex, Insert, Find, IndexKind, KeyType};
 
     macro_rules! json_val {
         ($($json:tt)+) => {
@@ -432,7 +432,7 @@ mod tests {
         System::run(|| {
             let _ = remove_dir_all(DB_PATH);
 
-            let storage = Storage::new(DB_PATH).unwrap();
+            let storage = Storage::new(DB_PATH, Options::default()).unwrap();
             
             let addr = storage.start(3);
             let addr1 = addr.clone();

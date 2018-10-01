@@ -38,7 +38,7 @@ extern crate serde;
 #[macro_use] extern crate serde_json;
 #[macro_use] extern crate ledb;
 
-use ledb::{Storage, IndexKind, KeyType, Filter, Comp, Order, OrderKind};
+use ledb::{Options, Storage, IndexKind, KeyType, Filter, Comp, Order, OrderKind};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 struct MyDoc {
@@ -52,7 +52,7 @@ fn main() {
     let _ = std::fs::remove_dir_all(&db_path);
 
     // Open storage
-    let storage = Storage::new(&db_path).unwrap();
+    let storage = Storage::new(&db_path, Options::default()).unwrap();
     
     // Get collection
     let collection = storage.collection("my-docs").unwrap();

@@ -5,7 +5,7 @@ extern crate pretty_env_logger;
 
 use actix::System;
 use actix_web::{middleware::Logger, server, App};
-use ledb_actix::{storage, Storage};
+use ledb_actix::{storage, Options, Storage};
 use std::env;
 
 fn main() {
@@ -13,7 +13,9 @@ fn main() {
     pretty_env_logger::init().unwrap();
 
     System::run(|| {
-        let addr = Storage::new("database").unwrap().start(4);
+        let addr = Storage::new("database", Options::default())
+            .unwrap()
+            .start(4);
 
         let bind = "127.0.0.1:8888";
 
