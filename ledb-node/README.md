@@ -111,3 +111,5 @@ posts.remove(null);
 // Remove documents using filter
 posts.remove({ timestamp: { $le: 123456789 } });
 ```
+
+See also [ledb.d.ts](https://github.com/katyo/ledb/blob/master/ledb-node/index.d.ts).

@@ -1,6 +1,6 @@
 {
   "name": "ledb",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "LEDB interface for NodeJS",
   "main": "native/index.node",
   "typings": "index.d.ts",

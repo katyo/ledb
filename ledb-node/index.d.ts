@@ -130,9 +130,28 @@ export interface Stats {
     data_entries: number,
 }
 
+// Storage options
+export interface Options {
+    // options
+    map_size?: number,
+    max_readers?: number,
+    max_dbs?: number,
+    // flags
+    map_async?: boolean,
+    no_lock?: boolean,
+    no_mem_init?: boolean,
+    no_meta_sync?: boolean,
+    no_read_ahead?: boolean,
+    no_sub_dir?: boolean,
+    no_sync?: boolean,
+    no_tls?: boolean,
+    read_only?: boolean,
+    write_map?: boolean,
+}
+
 // Storage handle interface
 export class Storage {
-    constructor(path: string);
+    constructor(path: string, opts?: Options);
     
     get_info(): Info;
     get_stats(): Stats;
