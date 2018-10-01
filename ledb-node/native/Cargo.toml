@@ -14,13 +14,16 @@ crate-type = ["cdylib"]
 neon-build = "0.2.0"
 
 [dependencies]
-#ledb = { path = "../../ledb" }
-ledb = { git = "https://github.com/katyo/ledb" }
-#ledb = "0.1.1"
+ledb = "0.1.1"
 neon = "0.2.0"
-neon-serde = { git = "https://github.com/apendleton/neon-serde", branch = "oh-point-two" }
+neon-serde = "0.0.3"
 
 [profile.release]
+opt-level = 3
+codegen-units = 1
+lto = true
 
-[build]
-rustflags = ["-C", "link-arg=-Wl,--print-gc-sections"]
+[patch.crates-io]
+neon-serde = { git = "https://github.com/apendleton/neon-serde", branch = "oh-point-two" }
+#ledb = { path = "../../ledb" }
+ledb = { git = "https://github.com/katyo/ledb" }

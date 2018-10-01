@@ -23,6 +23,11 @@ fn list_openned_storages(mut cx: FunctionContext) -> JsResult<JsValue> {
     Ok(js_try!(cx, to_value(&mut cx, &list)))
 }
 
+#[no_mangle]
+pub extern "C" fn node_addon_init() {
+    __LOAD_NEON_MODULE();
+}
+
 register_module!(mut cx, {
     cx.export_function("openned", list_openned_storages)?;
     cx.export_class::<JsStorage>("Storage")?;
