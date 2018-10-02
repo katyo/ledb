@@ -111,6 +111,16 @@ impl KeyData {
         })
     }
 
+    /// Value is empty
+    pub fn is_empty(&self) -> bool {
+        use self::KeyData::*;
+        match self {
+            String(val) => val.is_empty(),
+            Binary(val) => val.is_empty(),
+            _ => false,
+        }
+    }
+
     /// Simple data type casting
     pub fn as_type<'a>(&'a self, typ: KeyType) -> Option<&'a KeyData> {
         use self::KeyData::*;

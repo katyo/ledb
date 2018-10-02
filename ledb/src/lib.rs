@@ -408,6 +408,7 @@ mod tests {
         )?;
         c.insert(&json!({ "s": "321", "b": false, "i": [2], "n": { "i": 2, "a": ["t4", "t1"] } }))?;
         c.insert(&json!({ "s": "456", "b": true, "i": [3, 5], "n": { "i": -11, "a": ["t2"] } }))?;
+        c.insert(&json!({ "s": "" }))?;
         Ok(())
     }
 
@@ -521,8 +522,8 @@ mod tests {
         mk_index(&c).unwrap();
         fill_data(&c).unwrap();
 
-        assert_found!(query!(find in c order >), 1, 2, 3, 4, 5, 6);
-        assert_found!(query!(find in c order <), 6, 5, 4, 3, 2, 1);
+        assert_found!(query!(find in c order >), 1, 2, 3, 4, 5, 6, 7);
+        assert_found!(query!(find in c order <), 7, 6, 5, 4, 3, 2, 1);
     }
 
     #[test]

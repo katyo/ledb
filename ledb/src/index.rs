@@ -452,7 +452,10 @@ fn extract_field_primitives(doc: &Value, typ: KeyType, keys: &mut HashSet<KeyDat
         (typ, val) => {
             if let Some(val) = KeyData::from_val(&val) {
                 if let Some(val) = val.into_type(typ) {
-                    keys.insert(val.into_owned());
+                    // prevent indexing empty values
+                    if !val.is_empty() {
+                        keys.insert(val.into_owned());
+                    }
                 }
             }
         }
