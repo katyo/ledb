@@ -10,6 +10,9 @@ extern crate serde_json;
 extern crate ledb;
 #[macro_use]
 extern crate ledb_actix;
+#[macro_use]
+extern crate ledb_derive;
+extern crate ledb_types;
 
 #[macro_use]
 extern crate log;
@@ -17,23 +20,18 @@ extern crate pretty_env_logger;
 
 use actix::System;
 use futures::Future;
-use ledb_actix::{Storage, Options, StorageAddrExt, Primary, Document, Identifier};
+use ledb_actix::{Storage, Options, StorageAddrExt, Primary};
 use serde_json::from_value;
 use std::env;
 use tokio::spawn;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Document)]
 struct BlogPost {
+    #[document(primary)]
     pub id: Option<Primary>,
     pub title: String,
     pub tags: Vec<String>,
     pub content: String,
-}
-
-impl Document for BlogPost {
-    fn primary_field() -> Identifier {
-        "id".into()
-    }
 }
 
 fn main() {

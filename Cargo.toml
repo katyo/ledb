@@ -2,6 +2,7 @@
 
 members = [
   "ledb-types",
+  "ledb-derive",
   "ledb",
   "ledb-actix",
 ]

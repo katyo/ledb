@@ -18,23 +18,27 @@
 
 ```rust
 extern crate serde;
-#[macro_use] extern crate serde_derive;
+#[macro_use]
+extern crate serde_derive;
 // This allows inserting JSON documents
-#[macro_use] extern crate serde_json;
-#[macro_use] extern crate ledb;
+#[macro_use]
+extern crate serde_json;
+#[macro_use]
+extern crate ledb;
+// This allows define typed documents easy
+#[macro_use]
+extern crate ledb_derive;
+extern crate ledb_types;
 
 use ledb::{Storage, Options, IndexKind, KeyType, Filter, Comp, Order, OrderKind, Identifier, Primary, Document};
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Document)]
 struct MyDoc {
+    #[document(primary)]
     id: Option<Primary>,
     title: String,
     tag: Vec<String>,
     timestamp: u32,
-}
-
-impl Document for MyDoc {
-    fn primary_field() -> Identifier { "id".into() }
 }
 
 fn main() {

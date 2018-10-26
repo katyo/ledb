@@ -1,0 +1,23 @@
+[package]
+name = "ledb-derive"
+version = "0.2.0"
+authors = ["Kayo <kayo@illumium.org>"]
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/katyo/ledb"
+homepage = "https://github.com/katyo/ledb/tree/master/ledb"
+keywords = ["storage", "document", "database", "index"]
+categories = ["database"]
+description = "Derive macros for defining storable documents"
+
+[badges]
+travis-ci = { repository = "katyo/ledb" }
+appveyor = { repository = "katyo/ledb" }
+
+[lib]
+proc-macro = true
+
+[dependencies]
+proc-macro2 = "0.4"
+syn = { version = "0.15", features = ["derive"] }
+quote = "0.6"

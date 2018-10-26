@@ -30,3 +30,4 @@ dunce = "0.1"
 
 [dev-dependencies]
 serde_json = "1"
+ledb-derive = { version = "0.2", path = "../ledb-derive" }

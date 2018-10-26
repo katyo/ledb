@@ -14,15 +14,19 @@ Usage example:
 extern crate actix;
 extern crate futures;
 extern crate tokio;
-
 #[macro_use]
 extern crate serde_derive;
+// This allows inserting JSON documents
 #[macro_use]
 extern crate serde_json;
 #[macro_use]
 extern crate ledb;
 #[macro_use]
 extern crate ledb_actix;
+// This allows define typed documents easy
+#[macro_use]
+extern crate ledb_derive;
+extern crate ledb_types;
 
 #[macro_use]
 extern crate log;
@@ -35,18 +39,13 @@ use serde_json::from_value;
 use std::env;
 use tokio::spawn;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Document)]
 struct BlogPost {
+    #[document(primary)]
     pub id: Option<Primary>,
     pub title: String,
     pub tags: Vec<String>,
     pub content: String,
-}
-
-impl Document for BlogPost {
-    fn primary_field() -> Identifier {
-        "id".into()
-    }
 }
 
 fn main() {
