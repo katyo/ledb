@@ -30,16 +30,23 @@ extern crate pretty_env_logger;
 
 use actix::System;
 use futures::Future;
-use ledb_actix::{Storage, Options, StorageAddrExt};
+use ledb_actix::{Storage, Options, StorageAddrExt, Primary, Identifier, Document};
 use serde_json::from_value;
 use std::env;
 use tokio::spawn;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 struct BlogPost {
+    pub id: Option<Primary>,
     pub title: String,
     pub tags: Vec<String>,
     pub content: String,
+}
+
+impl Document for BlogPost {
+    fn primary_field() -> Identifier {
+        "id".into()
+    }
 }
 
 fn main() {
@@ -94,12 +101,13 @@ fn main() {
                 info!("Found document: {:?}", doc);
                 
                 let doc_data: BlogPost = from_value(json!({
+                    "id": 1,
                     "title": "Absurd",
                     "tags": ["absurd", "psychology"],
                     "content": "Still nothing..."
                 })).unwrap();
                 
-                assert_eq!(doc.get_data(), &doc_data);
+                assert_eq!(&doc, &doc_data);
                 assert!(docs.next().is_none());
                 
                 System::current().stop();

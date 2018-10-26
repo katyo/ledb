@@ -23,13 +23,18 @@ extern crate serde;
 #[macro_use] extern crate serde_json;
 #[macro_use] extern crate ledb;
 
-use ledb::{Storage, Options, IndexKind, KeyType, Filter, Comp, Order, OrderKind};
+use ledb::{Storage, Options, IndexKind, KeyType, Filter, Comp, Order, OrderKind, Identifier, Primary, Document};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 struct MyDoc {
+    id: Option<Primary>,
     title: String,
     tag: Vec<String>,
     timestamp: u32,
+}
+
+impl Document for MyDoc {
+    fn primary_field() -> Identifier { "id".into() }
 }
 
 fn main() {
@@ -58,6 +63,7 @@ fn main() {
     
     // Insert typed document
     let second_id = collection.insert(&MyDoc {
+        id: None,
         title: "Second title".into(),
         tag: vec![],
         timestamp: 1234567657,
@@ -334,6 +340,8 @@ extern crate serde_json;
 extern crate dirs;
 extern crate dunce;
 
+extern crate ledb_types;
+
 #[cfg(test)]
 #[macro_use]
 mod test;
@@ -355,10 +363,11 @@ mod value;
 mod macros;
 
 pub use collection::{Collection, DocumentsIterator};
-pub use document::{to_value, Document, Identifier, Primary, Value};
+pub use document::{to_value, RawDocument, Value};
 pub use error::{Error, Result, ResultWrap};
 pub use filter::{Comp, Cond, Filter, Order, OrderKind};
 pub use index::IndexKind;
+pub use ledb_types::{Document, Identifier, Primary};
 pub use modify::{Action, Modify, WrappedRegex};
 pub use storage::{Info, Options, Stats, Storage};
 pub use value::{KeyData, KeyType};
@@ -372,23 +381,45 @@ use storage::{DatabaseDef, StorageData};
 
 #[cfg(test)]
 mod tests {
-    use super::{Collection, Document, Primary, Result, Value};
+    use super::{Collection, Document, Identifier, Primary, Result, Value};
+    use serde_cbor::ObjectKey;
     use test::test_db;
+
+    fn get_id(val: Value) -> Option<Primary> {
+        if let Value::Object(map) = val {
+            map.get(&ObjectKey::String("$".into())).and_then(|val| {
+                if let Value::U64(id) = val {
+                    Some(*id as u32)
+                } else {
+                    None
+                }
+            })
+        } else {
+            None
+        }
+    }
 
     macro_rules! assert_found {
         ($res:expr $(,$exp:expr)*) => {
             let ids: Vec<Primary> = vec![$($exp),*];
-            assert_eq!($res.unwrap().map(|doc: Result<Document<Value>>| doc.unwrap().req_id().unwrap()).collect::<Vec<_>>(), ids)
+            assert_eq!($res.unwrap().map(|doc: Result<Value>| get_id(doc.unwrap()).unwrap()).collect::<Vec<_>>(), ids)
         }
     }
 
     #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
     pub struct Doc {
+        pub k: Option<Primary>,
         pub s: String,
         pub b: bool,
         pub i: Vec<i32>,
         pub f: Option<f32>,
         pub n: Option<SubDoc>,
+    }
+
+    impl Document for Doc {
+        fn primary_field() -> Identifier {
+            "k".into()
+        }
     }
 
     #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]

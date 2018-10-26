@@ -1,6 +1,4 @@
-use ledb::{
-    Collection, Document, Filter, Identifier, IndexKind, KeyType, Modify, Order, Primary, Value,
-};
+use ledb::{Collection, Filter, Identifier, IndexKind, KeyType, Modify, Order, Primary, Value};
 use neon::prelude::*;
 use neon_serde::{from_value, to_value};
 use std::u32;
@@ -172,7 +170,7 @@ declare_types! {
 
             let this = cx.this();
 
-            let doc: Option<Document> = js_try!(cx, {
+            let doc: Option<Value> = js_try!(cx, {
                 let guard = cx.lock();
                 let collection = this.borrow(&guard);
                 collection.get(id)
@@ -183,7 +181,7 @@ declare_types! {
 
         method put(mut cx) {
             let raw = cx.argument(0)?;
-            let doc: Document<Value> = from_value(&mut cx, raw)?;
+            let doc: Value = from_value(&mut cx, raw)?;
 
             let this = cx.this();
 

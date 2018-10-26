@@ -1,6 +1,7 @@
 [workspace]
 
 members = [
+  "ledb-types",
   "ledb",
   "ledb-actix",
 ]

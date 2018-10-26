@@ -247,11 +247,11 @@ pub fn Insert<C: Into<Identifier>, T: Serialize>(coll: C, data: T) -> InsertMsg<
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InsertMsg<T>(Identifier, T);
 
-impl<T: Serialize> Message for InsertMsg<T> {
+impl<T> Message for InsertMsg<T> {
     type Result = LeResult<Primary>;
 }
 
-impl<T: Serialize> Handler<InsertMsg<T>> for Storage {
+impl<T: Serialize + Document> Handler<InsertMsg<T>> for Storage {
     type Result = <InsertMsg<T> as Message>::Result;
 
     fn handle(&mut self, InsertMsg(collection, document): InsertMsg<T>, _: &mut Self::Context) -> Self::Result {
@@ -261,7 +261,7 @@ impl<T: Serialize> Handler<InsertMsg<T>> for Storage {
 
 /// Get the previously inserted document by primary key
 #[allow(non_snake_case)]
-pub fn Get<C: Into<Identifier>, T: DeserializeOwned>(coll: C, id: Primary) -> GetMsg<T> {
+pub fn Get<C: Into<Identifier>, T>(coll: C, id: Primary) -> GetMsg<T> {
     GetMsg(coll.into(), id, PhantomData)
 }
 
@@ -271,11 +271,11 @@ pub fn Get<C: Into<Identifier>, T: DeserializeOwned>(coll: C, id: Primary) -> Ge
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GetMsg<T>(Identifier, Primary, PhantomData<T>);
 
-impl<T: DeserializeOwned + 'static> Message for GetMsg<T> {
-    type Result = LeResult<Option<Document<T>>>;
+impl<T: 'static> Message for GetMsg<T> {
+    type Result = LeResult<Option<T>>;
 }
 
-impl<T: DeserializeOwned + 'static> Handler<GetMsg<T>> for Storage {
+impl<T: DeserializeOwned + Document + 'static> Handler<GetMsg<T>> for Storage {
     type Result = <GetMsg<T> as Message>::Result;
 
     fn handle(&mut self, GetMsg(collection, identifier, ..): GetMsg<T>, _: &mut Self::Context) -> Self::Result {
@@ -285,7 +285,7 @@ impl<T: DeserializeOwned + 'static> Handler<GetMsg<T>> for Storage {
 
 /// Put new version of the previously inserted document
 #[allow(non_snake_case)]
-pub fn Put<C: Into<Identifier>, T: Serialize>(coll: C, data: Document<T>) -> PutMsg<T> {
+pub fn Put<C: Into<Identifier>, T>(coll: C, data: T) -> PutMsg<T> {
     PutMsg(coll.into(), data)
 }
 
@@ -293,13 +293,13 @@ pub fn Put<C: Into<Identifier>, T: Serialize>(coll: C, data: Document<T>) -> Put
 ///
 /// *NOTE: Use `Put` for creating message*
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PutMsg<T>(Identifier, Document<T>);
+pub struct PutMsg<T>(Identifier, T);
 
-impl<T: Serialize> Message for PutMsg<T> {
+impl<T: Serialize + Document> Message for PutMsg<T> {
     type Result = LeResult<()>;
 }
 
-impl<T: Serialize> Handler<PutMsg<T>> for Storage {
+impl<T: Serialize + Document> Handler<PutMsg<T>> for Storage {
     type Result = <PutMsg<T> as Message>::Result;
 
     fn handle(&mut self, PutMsg(collection, document): PutMsg<T>, _: &mut Self::Context) -> Self::Result {
@@ -391,11 +391,11 @@ pub fn Find<C: Into<Identifier>, T>(coll: C, filter: Option<Filter>, order: Orde
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FindMsg<T>(Identifier, Option<Filter>, Order, PhantomData<T>);
 
-impl<T: DeserializeOwned + 'static> Message for FindMsg<T> {
+impl<T: 'static> Message for FindMsg<T> {
     type Result = LeResult<DocumentsIterator<T>>;
 }
 
-impl<T: DeserializeOwned + 'static> Handler<FindMsg<T>> for Storage {
+impl<T: DeserializeOwned + Document + 'static> Handler<FindMsg<T>> for Storage {
     type Result = <FindMsg<T> as Message>::Result;
 
     fn handle(&mut self, FindMsg(collection, filter, order, ..): FindMsg<T>, _: &mut Self::Context) -> Self::Result {
@@ -410,7 +410,7 @@ mod tests {
     use futures::{Future};
     use tokio::{spawn};
     use actix::{System};
-    use super::{Storage, Options, EnsureIndex, Insert, Find, IndexKind, KeyType};
+    use super::{Storage, Options, EnsureIndex, Insert, Find, IndexKind, KeyType, Document, Identifier, Primary};
 
     macro_rules! json_val {
         ($($json:tt)+) => {
@@ -420,9 +420,14 @@ mod tests {
 
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     struct BlogPost {
+        pub id: Option<Primary>,
         pub title: String,
         pub tags: Vec<String>,
         pub content: String,
+    }
+
+    impl Document for BlogPost {
+        fn primary_field() -> Identifier { "id".into() }
     }
 
     static DB_PATH: &'static str = "test_db";
@@ -469,11 +474,12 @@ mod tests {
                     assert_eq!(docs.size_hint(), (1, Some(1)));
                     let doc = docs.next().unwrap().unwrap();
                     let doc_data: BlogPost = json_val!({
+                        "id": 1,
                         "title": "Absurd",
                         "tags": ["absurd", "psychology"],
                         "content": "Still nothing..."
                     });
-                    assert_eq!(doc.get_data(), &doc_data);
+                    assert_eq!(&doc, &doc_data);
                     assert!(docs.next().is_none());
                     
                     System::current().stop();

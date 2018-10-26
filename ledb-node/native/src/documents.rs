@@ -1,10 +1,10 @@
-use ledb::{Document, Result, Value};
+use ledb::{Result, Value};
 use neon::prelude::*;
 use neon_serde::to_value;
 use std::mem::replace;
 use std::usize;
 
-pub struct Documents(pub(crate) Option<Box<Iterator<Item = Result<Document<Value>>>>>);
+pub struct Documents(pub(crate) Option<Box<Iterator<Item = Result<Value>>>>);
 
 static INVALID_RANGE: &'static str = "Argument not in range 0..N";
 static INVALID_ITERATOR: &'static str = "Invalid documents iterator";
@@ -83,7 +83,7 @@ declare_types! {
         method next(mut cx) {
             let mut this = cx.this();
 
-            let doc: Option<Document<Value>> = js_try!(cx, {
+            let doc: Option<Value> = js_try!(cx, {
                 let guard = cx.lock();
                 let mut this = this.borrow_mut(&guard);
 
@@ -110,7 +110,7 @@ declare_types! {
         method collect(mut cx) {
             let mut this = cx.this();
 
-            let docs: Vec<Document<Value>> = js_try!(cx, {
+            let docs: Vec<Value> = js_try!(cx, {
                 let guard = cx.lock();
                 let mut this = this.borrow_mut(&guard);
 

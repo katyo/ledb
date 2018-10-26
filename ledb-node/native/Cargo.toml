@@ -1,6 +1,6 @@
 [package]
 name = "ledb-node"
-version = "0.1.1"
+version = "0.2.0"
 authors = ["Kayo <kayo@illumium.org>"]
 license = "MIT"
 build = "build.rs"
@@ -14,7 +14,7 @@ crate-type = ["cdylib"]
 neon-build = "0.2.0"
 
 [dependencies]
-ledb = "0.1.1"
+ledb = "0.2.0"
 neon = "0.2.0"
 neon-serde = "0.0.3"
 
@@ -25,5 +25,5 @@ lto = true
 
 [patch.crates-io]
 neon-serde = { git = "https://github.com/apendleton/neon-serde", branch = "oh-point-two" }
-ledb = { path = "../../ledb" }
+#ledb = { path = "../../ledb" }
 #ledb = { git = "https://github.com/katyo/ledb" }

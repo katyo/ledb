@@ -13,7 +13,7 @@ use std::sync::Arc;
 use supercow::{ext::ConstDeref, Supercow};
 
 use super::{
-    DatabaseDef, Document, Enumerable, KeyData, KeyType, OrderKind, Primary, Result, ResultWrap,
+    DatabaseDef, Enumerable, KeyData, KeyType, OrderKind, Primary, RawDocument, Result, ResultWrap,
     Serial, Storage, Value,
 };
 use float::F64;
@@ -141,8 +141,8 @@ impl Index {
     pub(crate) fn update_index(
         &self,
         access: &mut WriteAccessor,
-        old_doc: Option<&Document>,
-        new_doc: Option<&Document>,
+        old_doc: Option<&RawDocument>,
+        new_doc: Option<&RawDocument>,
     ) -> Result<()> {
         let doc = old_doc
             .or_else(|| new_doc)
@@ -186,11 +186,11 @@ impl Index {
         Ok(())
     }
 
-    fn extract(&self, doc: &Document) -> HashSet<KeyData> {
+    fn extract(&self, doc: &RawDocument) -> HashSet<KeyData> {
         let mut keys = HashSet::new();
         let handle = self.handle();
         let path = handle.path.split('.');
-        extract_field_values(doc.get_data(), handle.key, &path, &mut keys);
+        extract_field_values(&*doc, handle.key, &path, &mut keys);
         keys
     }
 

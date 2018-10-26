@@ -15,7 +15,7 @@ use supercow::{ext::ConstDeref, Supercow};
 
 use super::{
     DatabaseDef, Document, Enumerable, Filter, Identifier, Index, IndexDef, IndexKind, KeyType,
-    Modify, Order, OrderKind, Primary, Result, ResultWrap, Serial, Storage, Value,
+    Modify, Order, OrderKind, Primary, RawDocument, Result, ResultWrap, Serial, Storage,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -99,10 +99,10 @@ impl Collection {
     ///
     /// Primary key/identifier of new inserted document will be returned.
     ///
-    pub fn insert<T: Serialize>(&self, doc: T) -> Result<Primary> {
+    pub fn insert<T: Serialize + Document>(&self, doc: T) -> Result<Primary> {
         let id = self.new_id()?;
 
-        self.put(&Document::new(doc).with_id(id))?;
+        self.put_raw(RawDocument::from_doc(&doc)?.with_id(id))?;
 
         Ok(id)
     }
@@ -115,7 +115,7 @@ impl Collection {
     ///
     /// You can use `DocumentsIterator::len()` for getting the total number of found documents.
     ///
-    pub fn find<T: DeserializeOwned>(
+    pub fn find<T: DeserializeOwned + Document>(
         &self,
         filter: Option<Filter>,
         order: Order,
@@ -170,11 +170,11 @@ impl Collection {
     /// When none filter specified then all documents will be found.
     ///
     /// The vector with found documents will be returned.
-    pub fn find_all<T: DeserializeOwned>(
+    pub fn find_all<T: DeserializeOwned + Document>(
         &self,
         filter: Option<Filter>,
         order: Order,
-    ) -> Result<Vec<Document<T>>> {
+    ) -> Result<Vec<T>> {
         self.find(filter, order)?.collect::<Result<Vec<_>>>()
     }
 
@@ -217,13 +217,14 @@ impl Collection {
                 for id in found_ids {
                     let (old_doc, new_doc) = {
                         let mut access = txn.access();
-                        let old_doc = Document::<Value>::from_raw(
-                            access.get(&handle.db, &Unaligned::new(id))?,
-                        )?.with_id(id);
-                        let new_doc = Document::new(modify.apply(old_doc.get_data().clone()));
+                        let old_doc =
+                            RawDocument::from_bin(access.get(&handle.db, &Unaligned::new(id))?)?
+                                .with_id(id);
+                        let new_doc = RawDocument::new(modify.apply(old_doc.clone().into_inner()))
+                            .with_id(id);
 
                         access
-                            .put(&handle.db, &Unaligned::new(id), &new_doc.into_raw()?, f)
+                            .put(&handle.db, &Unaligned::new(id), &new_doc.into_bin()?, f)
                             .wrap_err()?;
 
                         (old_doc, new_doc)
@@ -259,9 +260,9 @@ impl Collection {
                 for id in found_ids {
                     let old_doc = {
                         let mut access = txn.access();
-                        let old_doc = Document::<Value>::from_raw(
-                            access.get(&handle.db, &Unaligned::new(id))?,
-                        )?.with_id(id);
+                        let old_doc =
+                            RawDocument::from_bin(access.get(&handle.db, &Unaligned::new(id))?)?
+                                .with_id(id);
 
                         access.del_key(&handle.db, &Unaligned::new(id)).wrap_err()?;
 
@@ -282,7 +283,7 @@ impl Collection {
 
     /// Dump all documents which stored into the collection
     #[inline]
-    pub fn dump<T: DeserializeOwned>(&self) -> Result<DocumentsIterator<T>> {
+    pub fn dump<T: DeserializeOwned + Document>(&self) -> Result<DocumentsIterator<T>> {
         self.find(None, Order::default())
     }
 
@@ -290,9 +291,9 @@ impl Collection {
     ///
     /// *Note*: The old documents will be removed.
     ///
-    pub fn load<T: Serialize, I>(&self, docs: I) -> Result<usize>
+    pub fn load<T: Serialize + Document, I>(&self, docs: I) -> Result<usize>
     where
-        I: IntoIterator<Item = Document<T>>,
+        I: IntoIterator<Item = T>,
     {
         self.purge()?;
 
@@ -304,14 +305,14 @@ impl Collection {
 
         {
             for doc in docs.into_iter() {
+                let doc = RawDocument::from_doc(&doc)?;
                 let id = doc.req_id()?;
-                let doc = doc.into_gen()?;
 
                 {
                     let mut access = txn.access();
 
                     access
-                        .put(&handle.db, &Unaligned::new(id), &doc.into_raw()?, f)
+                        .put(&handle.db, &Unaligned::new(id), &doc.into_bin()?, f)
                         .wrap_err()?;
                 }
 
@@ -355,7 +356,7 @@ impl Collection {
     }
 
     /// Get document from collection using primary key/identifier
-    pub fn get<T: DeserializeOwned>(&self, id: Primary) -> Result<Option<Document<T>>> {
+    pub fn get<T: DeserializeOwned + Document>(&self, id: Primary) -> Result<Option<T>> {
         let handle = self.handle();
 
         let txn = ReadTransaction::new(handle.storage.clone()).wrap_err()?;
@@ -366,7 +367,7 @@ impl Collection {
             .to_opt()
             .wrap_err()?
         {
-            Some(val) => Some(Document::<T>::from_raw(val)?.with_id(id)),
+            Some(val) => Some(RawDocument::from_bin(val)?.with_id(id).into_doc()?),
             None => None,
         })
     }
@@ -375,13 +376,12 @@ impl Collection {
     ///
     /// *Note*: The document must have primary key/identifier.
     ///
-    pub fn put<T: Serialize>(&self, doc: &Document<T>) -> Result<()> {
-        if !doc.has_id() {
-            return Err("Document id is missing".into());
-        }
+    pub fn put<T: Serialize + Document>(&self, doc: T) -> Result<()> {
+        self.put_raw(RawDocument::from_doc(&doc)?)
+    }
 
-        let id = doc.get_id().unwrap();
-        let doc = doc.into_gen()?;
+    fn put_raw(&self, doc: RawDocument) -> Result<()> {
+        let id = doc.req_id()?;
 
         let handle = self.handle();
 
@@ -391,7 +391,7 @@ impl Collection {
             let mut access = txn.access();
             let old_doc =
                 if let Some(old_doc) = access.get(&handle.db, &Unaligned::new(id)).to_opt()? {
-                    Some(Document::<Value>::from_raw(old_doc)?.with_id(id))
+                    Some(RawDocument::from_bin(old_doc)?.with_id(id))
                 } else {
                     None
                 };
@@ -400,7 +400,7 @@ impl Collection {
                 .put(
                     &handle.db,
                     &Unaligned::new(id),
-                    &doc.into_raw()?,
+                    &doc.into_bin()?,
                     PutFlags::empty(),
                 ).wrap_err()?;
 
@@ -431,8 +431,7 @@ impl Collection {
         let old_doc = {
             let mut access = txn.access();
             let old_doc =
-                Document::<Value>::from_raw(access.get(&handle.db, &Unaligned::new(id))?)?
-                    .with_id(id);
+                RawDocument::from_bin(access.get(&handle.db, &Unaligned::new(id))?)?.with_id(id);
 
             access.del_key(&handle.db, &Unaligned::new(id)).wrap_err()?;
 
@@ -449,8 +448,8 @@ impl Collection {
     fn update_indexes(
         &self,
         txn: &WriteTransaction,
-        old_doc: Option<&Document>,
-        new_doc: Option<&Document>,
+        old_doc: Option<&RawDocument>,
+        new_doc: Option<&RawDocument>,
     ) -> Result<bool> {
         let handle = self.handle();
 
@@ -586,7 +585,7 @@ impl Collection {
                 ).wrap_err()?
                 {
                     let (key, val) = res.wrap_err()?;
-                    let doc = Document::<Value>::from_raw(val)?.with_id(key.get());
+                    let doc = RawDocument::from_bin(val)?.with_id(key.get());
                     index.update_index(&mut access, None, Some(&doc))?;
                 }
             }
@@ -788,9 +787,9 @@ impl<T> DocumentsIterator<T> {
 
 impl<T> Iterator for DocumentsIterator<T>
 where
-    T: DeserializeOwned,
+    T: DeserializeOwned + Document,
 {
-    type Item = Result<Document<T>>;
+    type Item = Result<T>;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.ids_iter.next().map(|id| {
@@ -800,8 +799,9 @@ where
                 access
                     .get(&self.coll, &Unaligned::new(id))
                     .wrap_err()
-                    .and_then(Document::<T>::from_raw)
+                    .and_then(RawDocument::from_bin)
                     .map(|doc| doc.with_id(id))
+                    .and_then(RawDocument::into_doc)
                     .wrap_err()
             }
         })
@@ -812,7 +812,7 @@ where
     }
 }
 
-impl<T> ExactSizeIterator for DocumentsIterator<T> where T: DeserializeOwned {}
+impl<T> ExactSizeIterator for DocumentsIterator<T> where T: DeserializeOwned + Document {}
 
 fn order_primary_asc(a: &Primary, b: &Primary) -> Ordering {
     a.cmp(b)
