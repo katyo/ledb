@@ -105,34 +105,58 @@ macro_rules! _query_impl {
 
     // index query
     (@index $args:tt, $($tokens:tt)+) => (
-        _query_impl!(@index_fields $args, [], $($tokens)+)
+        _query_impl!(@index_list $args, [], $($tokens)+)
     );
     // index field tuple
-    (@index_field $($field:ident).+, $kind:ident, $type:ident) => (
-        (_query_impl!(@field $($field).+), _query_impl!(@index_kind $kind), _query_impl!(@key_type $type))
+    (@index_field [ $($field:tt)+ ], $type:ident, $kind:ident) => (
+        (_query_impl!(@field $($field)+), _query_impl!(@key_type $type), _query_impl!(@index_kind $kind))
     );
-    // normal index
-    (@index_fields $args:tt, [ $($index:tt)* ], $($field:ident).+ $type:ident index $($tokens:tt)*) => (
-        _query_impl!(@index_fields $args, [ $($index)* {_query_impl!(@index_field $($field).+, index, $type)} ], $($tokens)*)
+    // index field start
+    (@index_list $args:tt, [ $($index:tt)* ], $field:ident $($tokens:tt)*) => (
+        _query_impl!(@index_list_field $args, [ $($index)* ], [ $field ], $($tokens)*)
     );
-    // unique index
-    (@index_fields $args:tt, [ $($index:tt)* ], $($field:ident).+ $type:ident unique $($tokens:tt)*) => (
-        _query_impl!(@index_fields $args, [ $($index)* {_query_impl!(@index_field $($field).+, unique, $type)} ], $($tokens)*)
+    // index field parse
+    (@index_list_field $args:tt, $index:tt, [ $($path:tt)+ ], . * $($tokens:tt)*) => (
+        _query_impl!(@index_list_field $args, $index, [ $($path)+ . * ], $($tokens)*)
     );
-    // normal index (without specifier)
-    (@index_fields $args:tt, [ $($index:tt)* ], $($field:ident).+ $type:ident $($tokens:tt)*) => (
-        _query_impl!(@index_fields $args, [ $($index)* {_query_impl!(@index_field $($field).+, index, $type)} ], $($tokens)*)
+    (@index_list_field $args:tt, $index:tt, [ $($path:tt)+ ], . $field:ident $($tokens:tt)*) => (
+        _query_impl!(@index_list_field $args, $index, [ $($path)+ . $field ], $($tokens)*)
     );
+    (@index_list_field $args:tt, $index:tt, $path:tt, $($tokens:tt)*) => (
+        _query_impl!(@index_list_key $args, $index, $path, $($tokens)*)
+    );
+    // index key type parse
+    (@index_list_key $args:tt, $index:tt, $field:tt, $type:ident $($tokens:tt)*) => (
+        _query_impl!(@index_list_kind $args, $index, $field, $type, $($tokens)*)
+    );
+    // index kind parse
+    (@index_list_kind $args:tt, $index:tt, $path:tt, $type:ident, index $($tokens:tt)*) => (
+        _query_impl!(@index_list_out $args, $index, $path, $type, index, $($tokens)*)
+    );
+    (@index_list_kind $args:tt, $index:tt, $path:tt, $type:ident, unique $($tokens:tt)*) => (
+        _query_impl!(@index_list_out $args, $index, $path, $type, unique, $($tokens)*)
+    );
+    (@index_list_kind $args:tt, $index:tt, $path:tt, $type:ident, $($tokens:tt)*) => (
+        _query_impl!(@index_list_out $args, $index, $path, $type, index, $($tokens)*)
+    );
+    // index field out
+    (@index_list_out $args:tt, [ $($index:tt)* ], $field:tt, $type:ident, $kind:ident, $($tokens:tt)*) => (
+        _query_impl!(@index_list_next $args, [ $($index)* {_query_impl!(@index_field $field, $type, $kind)} ], $($tokens)*)
+    );
+
     // skip comma
-    (@index_fields $args:tt, $index:tt, , $($tokens:tt)*) => (
-        _query_impl!(@index_fields $args, $index, $($tokens)*)
+    (@index_list_next $args:tt, $index:tt, $(,)+ $($tokens:tt)*) => (
+        _query_impl!(@index_list $args, $index, $($tokens)*)
     );
     // skip semicolon
-    (@index_fields $args:tt, $index:tt, ; $($tokens:tt)*) => (
-        _query_impl!(@index_fields $args, $index, $($tokens)*)
+    (@index_list_next $args:tt, $index:tt, $(;)+ $($tokens:tt)*) => (
+        _query_impl!(@index_list $args, $index, $($tokens)*)
+    );
+    (@index_list_next $args:tt, $index:tt, $($tokens:tt)*) => (
+        _query_impl!(@index_list $args, $index, $($tokens)*)
     );
     // end fields
-    (@index_fields ($out:ident, $coll:expr), [ $($index:tt)+ ], $(,)*) => (
+    (@index_list ($out:ident, $coll:expr), [ $($index:tt)+ ], ) => (
         _query_impl!(@call $out, @index $coll, [ $($index),+ ])
     );
     // index kinds
@@ -141,9 +165,7 @@ macro_rules! _query_impl {
     // key types
     (@key_type integer) => ( $crate::KeyType::Int );
     (@key_type int) => ( $crate::KeyType::Int );
-    (@key_type int64) => ( $crate::KeyType::Int );
     (@key_type float) => ( $crate::KeyType::Float );
-    (@key_type float64) => ( $crate::KeyType::Float );
     (@key_type boolean) => ( $crate::KeyType::Bool );
     (@key_type bool) => ( $crate::KeyType::Bool );
     (@key_type string) => ( $crate::KeyType::String );
@@ -258,16 +280,16 @@ macro_rules! _query_impl {
     (@order_kind desc) => ( $crate::OrderKind::Desc );
     (@order_kind ) => ( $crate::OrderKind::default() );
 
-    (@order by $($field:ident).+ >) => ( _query_impl!(@order_field_impl $($field).+, >) );
-    (@order by $($field:ident).+ <) => ( _query_impl!(@order_field_impl $($field).+, <) );
-    (@order by $($field:ident).+ asc) => ( _query_impl!(@order_field_impl $($field).+, asc) );
-    (@order by $($field:ident).+ desc) => ( _query_impl!(@order_field_impl $($field).+, desc) );
-    (@order by $($field:ident).+ ) => ( _query_impl!(@order_field_impl $($field).+, ) );
+    (@order by $field:ident $($tokens:tt)*) => ( _query_impl!(@order_field [ $field ] $($tokens)*) );
+    (@order $order:tt) => ( $crate::Order::primary(_query_impl!(@order_kind $order)) );
+    (@order ) => ( $crate::Order::primary(_query_impl!(@order_kind )) );
 
-    (@order $($order:tt)*) => ( $crate::Order::primary(_query_impl!(@order_kind $($order)*)) );
+    (@order_field [ $($path:tt)+ ] . * $($tokens:tt)*) => ( _query_impl!(@order_field [ $($path)+ . * ] $($tokens)*) );
+    (@order_field [ $($path:tt)+ ] . $field:ident $($tokens:tt)*) => ( _query_impl!(@order_field [ $($path)+ . $field ] $($tokens)*) );
+    (@order_field [ $($path:tt)+ ] $($tokens:tt)*) => ( _query_impl!(@order_field_impl [ $($path)+ ], $($tokens)*) );
 
-    (@order_field_impl $($field:ident).+, $($order:tt)*) => (
-        $crate::Order::field(_query_impl!(@field $($field).+), _query_impl!(@order_kind $($order)*))
+    (@order_field_impl [ $($field:tt)+ ], $($order:tt)*) => (
+        $crate::Order::field(_query_impl!(@field $($field)+), _query_impl!(@order_kind $($order)*))
     );
 
     //
@@ -372,87 +394,100 @@ macro_rules! _query_impl {
 
     // parse expression
     (@filter_nest $($tokens:tt)+) => (
-        _query_impl!(@filter_comp $($tokens)+)
+        _query_impl!(@filter_comp_init $($tokens)+)
     );
 
+    // parse field (field.subfield / field.* / field.*.subfield)
+    (@filter_comp_init $field:ident $($tokens:tt)+) => (
+        _query_impl!(@filter_comp_field [ $field ] $($tokens)+)
+    );
+    (@filter_comp_field [ $($path:tt)+ ] . * $($tokens:tt)+) => (
+        _query_impl!(@filter_comp_field [ $($path)+ . * ] $($tokens)+)
+    );
+    (@filter_comp_field [ $($path:tt)+ ] . $field:ident $($tokens:tt)+) => (
+        _query_impl!(@filter_comp_field [ $($path)+ . $field ] $($tokens)+)
+    );
+    (@filter_comp_field [ $($path:tt)+ ] $($tokens:tt)+) => (
+        _query_impl!(@filter_comp [ $($path)+ ] $($tokens)+)
+    );
     // equal
-    (@filter_comp $($field:ident).+ == $value:expr) => (
-        _query_impl!(@filter_comp_impl $($field).+, Eq, $crate::KeyData::from($value))
+    (@filter_comp $field:tt == $value:expr) => (
+        _query_impl!(@filter_comp_impl $field, Eq, $crate::KeyData::from($value))
     );
     // not equal
-    (@filter_comp $($field:ident).+ != $value:expr) => (
-        _query_impl!(@filter_comp_impl ! $($field).+, Eq, $crate::KeyData::from($value))
+    (@filter_comp $field:tt != $value:expr) => (
+        _query_impl!(@filter_comp_impl ! $field, Eq, $crate::KeyData::from($value))
     );
     // out of set (not one of)
-    (@filter_comp $($field:ident).+ !of [$($value:expr),*]) => (
-        _query_impl!(@filter_comp_impl ! $($field).+, In, _query_impl!(@vec $($crate::KeyData::from($value)),*))
+    (@filter_comp $field:tt !of [$($value:expr),*]) => (
+        _query_impl!(@filter_comp_impl ! $field, In, _query_impl!(@vec $($crate::KeyData::from($value)),*))
     );
     // in set (one of)
-    (@filter_comp $($field:ident).+ of [$($value:expr),*]) => (
-        _query_impl!(@filter_comp_impl $($field).+, In, _query_impl!(@vec $($crate::KeyData::from($value)),*))
+    (@filter_comp $field:tt of [$($value:expr),*]) => (
+        _query_impl!(@filter_comp_impl $field, In, _query_impl!(@vec $($crate::KeyData::from($value)),*))
     );
     // out of set (not one of)
-    (@filter_comp $($field:ident).+ !of $value:expr) => (
-        _query_impl!(@filter_comp_impl ! $($field).+, In, $value.into_iter().map($crate::KeyData::from).collect())
+    (@filter_comp $field:tt !of $value:expr) => (
+        _query_impl!(@filter_comp_impl ! $field, In, $value.into_iter().map($crate::KeyData::from).collect())
     );
     // in set (one of)
-    (@filter_comp $($field:ident).+ of $value:expr) => (
-        _query_impl!(@filter_comp_impl $($field).+, In, $value.into_iter().map($crate::KeyData::from).collect())
+    (@filter_comp $field:tt of $value:expr) => (
+        _query_impl!(@filter_comp_impl $field, In, $value.into_iter().map($crate::KeyData::from).collect())
     );
 
     // less than
-    (@filter_comp $($field:ident).+ < $value:expr) => (
-        _query_impl!(@filter_comp_impl $($field).+, Lt, $crate::KeyData::from($value))
+    (@filter_comp $field:tt < $value:expr) => (
+        _query_impl!(@filter_comp_impl $field, Lt, $crate::KeyData::from($value))
     );
     // less than or equal
-    (@filter_comp $($field:ident).+ <= $value:expr) => (
-        _query_impl!(@filter_comp_impl $($field).+, Le, $crate::KeyData::from($value))
+    (@filter_comp $field:tt <= $value:expr) => (
+        _query_impl!(@filter_comp_impl $field, Le, $crate::KeyData::from($value))
     );
 
     // greater than
-    (@filter_comp $($field:ident).+ > $value:expr) => (
-        _query_impl!(@filter_comp_impl $($field).+, Gt, $crate::KeyData::from($value))
+    (@filter_comp $field:tt > $value:expr) => (
+        _query_impl!(@filter_comp_impl $field, Gt, $crate::KeyData::from($value))
     );
     // greater than or equal
-    (@filter_comp $($field:ident).+ >= $value:expr) => (
-        _query_impl!(@filter_comp_impl $($field).+, Ge, $crate::KeyData::from($value))
+    (@filter_comp $field:tt >= $value:expr) => (
+        _query_impl!(@filter_comp_impl $field, Ge, $crate::KeyData::from($value))
     );
 
     // in bounded range
-    (@filter_comp $($field:ident).+ in $range:expr) => (
-        _query_impl!(@filter_comp_impl $($field).+, Bw, $crate::KeyData::from($range.start), true, $crate::KeyData::from($range.end), true)
+    (@filter_comp $field:tt in $range:expr) => (
+        _query_impl!(@filter_comp_impl $field, Bw, $crate::KeyData::from($range.start), true, $crate::KeyData::from($range.end), true)
     );
 
     // in bounded range excluding bounds
-    (@filter_comp $($field:ident).+ <in> $range:expr) => (
-        _query_impl!(@filter_comp_impl $($field).+, Bw, $crate::KeyData::from($range.start), false, $crate::KeyData::from($range.end), false)
+    (@filter_comp $field:tt <in> $range:expr) => (
+        _query_impl!(@filter_comp_impl $field, Bw, $crate::KeyData::from($range.start), false, $crate::KeyData::from($range.end), false)
     );
 
     // in bounded range excluding start (left) bound
-    (@filter_comp $($field:ident).+ <in $range:expr) => (
-        _query_impl!(@filter_comp_impl $($field).+, Bw, $crate::KeyData::from($range.start), false, $crate::KeyData::from($range.end), true)
+    (@filter_comp $field:tt <in $range:expr) => (
+        _query_impl!(@filter_comp_impl $field, Bw, $crate::KeyData::from($range.start), false, $crate::KeyData::from($range.end), true)
     );
 
     // in bounded range excluding end (right) bound
-    (@filter_comp $($field:ident).+ in> $range:expr) => (
-        _query_impl!(@filter_comp_impl $($field).+, Bw, $crate::KeyData::from($range.start), true, $crate::KeyData::from($range.end), false)
+    (@filter_comp $field:tt in> $range:expr) => (
+        _query_impl!(@filter_comp_impl $field, Bw, $crate::KeyData::from($range.start), true, $crate::KeyData::from($range.end), false)
     );
 
     // has value (field exists or not null)
-    (@filter_comp $($field:ident).+ ?) => (
-        _query_impl!(@filter_comp_impl $($field).+, Has)
+    (@filter_comp $field:tt ?) => (
+        _query_impl!(@filter_comp_impl $field, Has)
     );
 
     (@filter_comp_impl ! $($tokens:tt)+) => (
         $crate::Filter::cond($crate::Cond::Not(Box::new(_query_impl!(@filter_comp_impl $($tokens)+))))
     );
 
-    (@filter_comp_impl $($field:ident).+, $op:ident) => (
-        $crate::Filter::comp(_query_impl!(@field $($field).+), $crate::Comp::$op)
+    (@filter_comp_impl [ $($field:tt)+ ], $op:ident) => (
+        $crate::Filter::comp(_query_impl!(@field $($field)+), $crate::Comp::$op)
     );
 
-    (@filter_comp_impl $($field:ident).+, $op:ident, $($args:expr),+) => (
-        $crate::Filter::comp(_query_impl!(@field $($field).+), $crate::Comp::$op($($args),+))
+    (@filter_comp_impl [ $($field:tt)+ ], $op:ident, $($args:expr),+) => (
+        $crate::Filter::comp(_query_impl!(@field $($field)+), $crate::Comp::$op($($args),+))
     );
 
     //
@@ -821,6 +856,12 @@ mod test {
                        ] })
             );
         }
+
+        #[test]
+        fn pattern_map() {
+            assert_eq!(query!(@filter field.* == "abc"), json_val!({ "field.*": { "$eq": "abc" } }));
+            assert_eq!(query!(@filter field.*.subfield == 1), json_val!({ "field.*.subfield": { "$eq": 1 } }));
+        }
     }
 
     mod order {
@@ -855,6 +896,15 @@ mod test {
             assert_eq!(
                 query!(@order by a.b.c desc),
                 json_val!({ "a.b.c": "$desc" })
+            );
+        }
+
+        #[test]
+        fn pattern_map() {
+            assert_eq!(query!(@order by field.*), json_val!({ "field.*": "$asc" }));
+            assert_eq!(
+                query!(@order by field.*.subfield desc),
+                json_val!({ "field.*.subfield": "$desc" })
             );
         }
     }

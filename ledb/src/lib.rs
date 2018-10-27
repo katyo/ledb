@@ -108,6 +108,7 @@ fn main() {
 ## Field names
 
 Field name is a sequence of dot-separated identifiers which represents nesting of value in document.
+Also fully qualified field names supports wildcard pattern (*).
 
 For example, in document below:
 
@@ -119,7 +120,15 @@ For example, in document below:
     },
     "d": [
       "a"
-    ]
+    ],
+    "s": [
+      { n: 1 },
+      { n: 2 }
+    ],
+    "h": {
+      "a": { s: "a" },
+      "b": { s: "b" }
+    }
 }
 ```
 
@@ -132,6 +141,8 @@ b.c > 10
 b.c += 3
 d == "a"
 d[-1..] += ["b", "c"]
+s.n > 1
+h.*.s == "a"
 ```
 
 ## Indexing
@@ -143,6 +154,7 @@ query!(
     index for some_collection
         some_field Int unique, // unique index
         other_field.with.sub_field String,
+        wildcarded.*.sub_field Int,
         // ...next fields
 )
 ```
