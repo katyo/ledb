@@ -31,7 +31,11 @@ pub fn derive_document(input: &DeriveInput) -> Result<TokenStream, String> {
 
                     if let Some((field_name, field_type)) = get_nested_attribute(&field) {
                         nested_docs
-                            .push((get_serde_rename(&field).unwrap_or(field_name), field_type));
+                            .push((
+                                get_serde_rename(&field).unwrap_or(field_name),
+                                field_type,
+                                has_serde_flatten(&field)
+                            ));
                     }
                 }
             }
@@ -80,11 +84,17 @@ pub fn derive_document(input: &DeriveInput) -> Result<TokenStream, String> {
 
         let nested_docs = nested_docs
             .into_iter()
-            .map(|(field_name, field_type)| {
-                let field_name = Lit::Str(LitStr::new(&field_name, Span::call_site()));
-                
-                quote! {
-                    <#field_type as ::ledb_types::Document>::key_fields().with_parent(#field_name)
+            .map(|(field_name, field_type, is_flatten)| {
+                if is_flatten {
+                    quote! {
+                        <#field_type as ::ledb_types::Document>::key_fields()
+                    }
+                } else {
+                    let field_name = Lit::Str(LitStr::new(&field_name, Span::call_site()));
+                    
+                    quote! {
+                        <#field_type as ::ledb_types::Document>::key_fields().with_parent(#field_name)
+                    }
                 }
             });
 
@@ -221,6 +231,28 @@ fn get_nested_attribute(field: &Field) -> Option<(String, Type)> {
     }
 
     None
+}
+
+fn has_serde_flatten(field: &Field) -> bool {
+    for attr in &field.attrs {
+        if attr.path.leading_colon.is_none()
+            && attr.path.segments.len() == 1
+            && attr.path.segments.first().unwrap().value().ident == "serde"
+        {
+            for tt in attr.tts.clone() {
+                if let TokenTree::Group(group) = tt {
+                    if group.stream().into_iter().any(|token| match &token {
+                        TokenTree::Ident(name) if name == "flatten" => true,
+                        _ => false,
+                    }) {
+                        return true;
+                    }
+                }
+            }
+        }
+    }
+
+    false
 }
 
 fn get_serde_rename(field: &Field) -> Option<String> {
@@ -519,6 +551,63 @@ mod test {
                     fn key_fields() -> ::ledb_types::KeyFields {
                         ::ledb_types::KeyFields::new()
                             .with_field(("field", <i32 as ::ledb_types::DocumentKeyType>::key_type(), ::ledb_types::IndexKind::Index))
+                    }
+                }
+            }.to_string()
+        );
+    }
+
+    #[test]
+    fn document_nested_flatten() {
+        let src1: DeriveInput = parse_quote! {
+            #[derive(Document)]
+            struct TestDoc {
+                #[document(primary)]
+                id: Option<Primary>,
+                #[document(unique)]
+                field: String,
+                #[document(nested)]
+                #[serde(flatten)]
+                nested: Vec<NestedDoc>,
+            }
+        };
+
+        let src2: DeriveInput = parse_quote! {
+            #[derive(Document)]
+            #[document(nested)]
+            struct NestDoc {
+                #[document(index)]
+                field2: i32,
+            }
+        };
+
+        let res1 = derive_document(&src1).unwrap();
+        let res2 = derive_document(&src2).unwrap();
+
+        assert_eq!(
+            res1.to_string(),
+            quote! {
+                impl ::ledb_types::Document for TestDoc {
+                    fn primary_field() -> ::ledb_types::Identifier {
+                        "id".into()
+                    }
+                    
+                    fn key_fields() -> ::ledb_types::KeyFields {
+                        ::ledb_types::KeyFields::new()
+                            .with_field(("field", <String as ::ledb_types::DocumentKeyType>::key_type(), ::ledb_types::IndexKind::Unique))
+                            .with_fields(<Vec<NestedDoc> as ::ledb_types::Document>::key_fields())
+                    }
+                }
+            }.to_string()
+        );
+
+        assert_eq!(
+            res2.to_string(),
+            quote! {
+                impl ::ledb_types::Document for NestDoc {
+                    fn key_fields() -> ::ledb_types::KeyFields {
+                        ::ledb_types::KeyFields::new()
+                            .with_field(("field2", <i32 as ::ledb_types::DocumentKeyType>::key_type(), ::ledb_types::IndexKind::Index))
                     }
                 }
             }.to_string()

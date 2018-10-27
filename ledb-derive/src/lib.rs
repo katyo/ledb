@@ -97,6 +97,8 @@ struct NestedDoc {
 }
 ```
 
+**NOTE**: When `serde(flatten)` is used the key fields of nested documents will be transferred to owner.
+
 ## Simple usage example
 
 ```ignore
