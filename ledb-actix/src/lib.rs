@@ -154,7 +154,7 @@ __GET__ /collection/_$collection_name_/index
 
 #### create new index for collection
 
-__POST__ /collection/_$collection_name_/index?name=_$field_name_&kind=_$index_kind_&type=_$key_type_
+__POST__ /collection/_$collection_name_/index?path=_$field_name_&kind=_$index_kind_&key=_$key_type_
 
 #### drop index of collection
 

@@ -17,10 +17,10 @@ Content-Type: application/json
 GET :url/collection/user/document/1
 
 # Ensure index (unique name)
-POST :url/collection/user/index?name=name&kind=uni&type=string
+POST :url/collection/user/index?path=name&kind=uni&key=string
 
 # Ensure index (prefs)
-POST :url/collection/user/index?name=prefs&type=string
+POST :url/collection/user/index?path=prefs&key=string
 
 # Drop index
 DELETE :url/collection/user/index/name

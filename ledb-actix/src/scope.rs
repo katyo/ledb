@@ -12,8 +12,8 @@ use std::usize;
 
 use super::{
     Delete, Document, DropCollection, DropIndex, EnsureCollection, EnsureIndex, Filter, Find, Get,
-    GetCollections, GetIndexes, GetInfo, GetStats, IndexKind, Info, Insert, KeyType,
-    ListCollections, Modify, Order, Primary, Put, Remove, Stats, Storage, Update, Value,
+    GetCollections, GetIndexes, GetInfo, GetStats, Info, Insert, KeyField, ListCollections, Modify,
+    Order, Primary, Put, Remove, Stats, Storage, Update, Value,
 };
 
 /// Storage actor address type
@@ -105,7 +105,7 @@ Index API:
     # get indexes of collection
     GET {indexes}
     # create new index for collection
-    POST {indexes}?name=$field_path&kind=$index_kind&type=$key_type
+    POST {indexes}?path=$field_path&kind=$index_kind&key=$key_type
     # drop index of collection
     DELETE {index}
 
@@ -242,34 +242,14 @@ pub fn drop_collection(
         })
 }
 
-/// Index parameters
-#[derive(Serialize, Deserialize)]
-pub struct IndexParams {
-    pub name: String,
-    #[serde(default)]
-    pub kind: IndexKind,
-    #[serde(rename = "type")]
-    pub key: KeyType,
-}
-
 /// Get indexes handler
 pub fn get_indexes(
     (addr, coll): (State<StorageAddr>, Path<String>),
-) -> impl Future<Item = Json<Vec<IndexParams>>, Error = Error> {
+) -> impl Future<Item = Json<Vec<KeyField>>, Error = Error> {
     addr.send(GetIndexes(coll.into_inner()))
         .map_err(ErrorServiceUnavailable)
         .and_then(|res| res.map_err(ErrorInternalServerError))
-        .map(|indexes| {
-            Json(
-                indexes
-                    .into_iter()
-                    .map(|(name, kind, key)| IndexParams {
-                        name: String::from(name.as_ref()),
-                        kind,
-                        key,
-                    }).collect(),
-            )
-        })
+        .map(|indexes| Json(indexes.into_iter().collect()))
 }
 
 /// Ensure index handler
@@ -277,14 +257,14 @@ pub fn ensure_index(
     (addr, coll, params, req): (
         State<StorageAddr>,
         Path<String>,
-        Query<IndexParams>,
+        Query<KeyField>,
         HttpRequest<StorageAddr>,
     ),
 ) -> impl Future<Item = HttpResponse, Error = Error> {
-    let IndexParams { name, kind, key } = params.into_inner();
-    if let Ok(url) = req.url_for("index", &[&coll, &name]) {
+    let KeyField { path, kind, key } = params.into_inner();
+    if let Ok(url) = req.url_for("index", &[&coll, &path]) {
         Either::A(
-            addr.send(EnsureIndex(coll.into_inner(), name, kind, key))
+            addr.send(EnsureIndex(coll.into_inner(), path, kind, key))
                 .map_err(ErrorServiceUnavailable)
                 .and_then(|res| res.map_err(ErrorInternalServerError))
                 .map(move |res| {
@@ -358,7 +338,7 @@ pub struct FindParams {
 /// Find documents query handler
 pub fn find_documents(
     (addr, coll, query): (State<StorageAddr>, Path<String>, Query<FindParams>),
-) -> impl Future<Item = Json<Vec<Document<Value>>>, Error = Error> {
+) -> impl Future<Item = Json<Vec<Value>>, Error = Error> {
     let FindParams {
         filter,
         order,
@@ -427,7 +407,7 @@ pub fn remove_documents(
 /// Get document handler
 pub fn get_document(
     (addr, path): (State<StorageAddr>, Path<(String, Primary)>),
-) -> impl Future<Item = Json<Document<Value>>, Error = Error> {
+) -> impl Future<Item = Json<Value>, Error = Error> {
     let (coll, id) = path.into_inner();
     addr.send(Get(coll, id))
         .map_err(ErrorServiceUnavailable)
@@ -438,12 +418,26 @@ pub fn get_document(
         })
 }
 
+#[derive(Serialize)]
+pub struct DocumentWithId {
+    #[serde(rename = "$")]
+    id: Primary,
+    #[serde(flatten)]
+    val: Value,
+}
+
+impl Document for DocumentWithId {}
+
 /// Put document handler
 pub fn put_document(
     (addr, path, data): (State<StorageAddr>, Path<(String, Primary)>, Json<Value>),
 ) -> impl Future<Item = HttpResponse, Error = Error> {
     let (coll, id) = path.into_inner();
-    addr.send(Put(coll, Document::new(data.into_inner()).with_id(id)))
+    let doc = DocumentWithId {
+        id,
+        val: data.into_inner(),
+    };
+    addr.send(Put(coll, doc))
         .map_err(ErrorServiceUnavailable)
         .and_then(|res| res.map_err(ErrorInternalServerError))
         .map(|_| HttpResponse::NoContent().finish())
