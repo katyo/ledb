@@ -289,17 +289,17 @@ impl Default for KeyType {
 /// The kind of index
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum IndexKind {
-    /// Index which contains unique keys
-    #[serde(rename = "uni")]
-    Unique,
     /// Index which may contains duplicates
-    #[serde(rename = "dup")]
-    Duplicate,
+    #[serde(rename = "index")]
+    Index,
+    /// Index which contains unique keys only
+    #[serde(rename = "unique")]
+    Unique,
 }
 
 impl Default for IndexKind {
     fn default() -> Self {
-        IndexKind::Duplicate
+        IndexKind::Index
     }
 }
 

@@ -136,8 +136,8 @@ Document API:
 
 Supported index kinds:
 
-    uni -- Unique key
-    dup -- Duplicated keys
+    index -- Normal index which may contain duplicated keys
+    unique -- Index which contains unique keys only
 
 Supported key types:
 

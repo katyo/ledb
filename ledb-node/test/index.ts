@@ -1,6 +1,6 @@
 import { deepStrictEqual as dse } from 'assert';
 import { removeSync } from 'fs-extra';
-import { Storage, Collection } from '../';
+import { Storage, Collection, KeyFields } from '../';
 
 removeSync("test_db");
 
@@ -81,29 +81,29 @@ describe('collection', () => {
         dse(coll.has_index("timestamp"), false);
         dse(coll.get_indexes(), []);
 
-        dse(coll.ensure_index("title", "uni", "string"), true);
+        dse(coll.ensure_index("title", "unique", "string"), true);
         
         dse(coll.has_index("title"), true);
         dse(coll.has_index("tag"), false);
         dse(coll.has_index("timestamp"), false);
-        dse(coll.get_indexes(), [{path: "title", kind: "uni", key: "string"}]);
+        dse(coll.get_indexes(), [{path: "title", kind: "unique", key: "string"}] as KeyFields);
         
-        dse(coll.ensure_index("tag", "dup", "string"), true);
+        dse(coll.ensure_index("tag", "index", "string"), true);
         
         dse(coll.has_index("title"), true);
         dse(coll.has_index("tag"), true);
         dse(coll.has_index("timestamp"), false);
-        dse(coll.get_indexes(), [{path: "title", kind: "uni", key: "string"},
-                                 {path: "tag", kind: "dup", key: "string"}]);
+        dse(coll.get_indexes(), [{path: "title", kind: "unique", key: "string"},
+                                 {path: "tag", kind: "index", key: "string"}] as KeyFields);
 
-        dse(coll.ensure_index("timestamp", "dup", "int"), true);
+        dse(coll.ensure_index("timestamp", "index", "int"), true);
         
         dse(coll.has_index("title"), true);
         dse(coll.has_index("tag"), true);
         dse(coll.has_index("timestamp"), true);
-        dse(coll.get_indexes(), [{path: "title", kind: "uni", key: "string"},
-                                 {path: "tag", kind: "dup", key: "string"},
-                                 {path: "timestamp", kind: "dup", key: "int"}]);
+        dse(coll.get_indexes(), [{path: "title", kind: "unique", key: "string"},
+                                 {path: "tag", kind: "index", key: "string"},
+                                 {path: "timestamp", kind: "index", key: "int"}] as KeyFields);
     });
 
     it('find', () => {

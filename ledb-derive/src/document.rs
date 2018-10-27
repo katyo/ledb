@@ -65,7 +65,7 @@ pub fn derive_document(input: &DeriveInput) -> Result<TokenStream, String> {
                 let field_name = Lit::Str(LitStr::new(&field_name, Span::call_site()));
                 let index_kind = match index_kind.as_str() {
                     "unique" => quote! { ::ledb_types::IndexKind::Unique },
-                    "duplicate" => quote! { ::ledb_types::IndexKind::Duplicate },
+                    "index" => quote! { ::ledb_types::IndexKind::Index },
                     _ => unreachable!(),
                 };
 
@@ -140,7 +140,7 @@ fn get_index_attribute(field: &Field) -> Option<(String, Type, String)> {
                         let mut tts = group.stream().into_iter();
                         match (&tts.next(), &tts.next()) {
                             (Some(TokenTree::Ident(kind)), None)
-                                if kind == "unique" || kind == "duplicate" =>
+                                if kind == "unique" || kind == "index" =>
                             {
                                 return Some((
                                     ident.to_string(),
@@ -430,7 +430,7 @@ mod test {
             #[derive(Document)]
             #[document(nested)]
             struct NestDoc {
-                #[document(duplicate)]
+                #[document(index)]
                 field: i32,
             }
         };
@@ -461,7 +461,7 @@ mod test {
                 impl ::ledb_types::Document for NestDoc {
                     fn key_fields() -> ::ledb_types::KeyFields {
                         ::ledb_types::KeyFields::new()
-                            .with_field(("field", <i32 as ::ledb_types::DocumentKeyType>::key_type(), ::ledb_types::IndexKind::Duplicate))
+                            .with_field(("field", <i32 as ::ledb_types::DocumentKeyType>::key_type(), ::ledb_types::IndexKind::Index))
                     }
                 }
             }.to_string()

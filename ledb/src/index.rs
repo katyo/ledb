@@ -74,19 +74,19 @@ impl Index {
             (IndexKind::Unique, KeyType::String) => DatabaseOptions::create_map::<str>(),
             (IndexKind::Unique, KeyType::Binary) => DatabaseOptions::create_map::<[u8]>(),
             (IndexKind::Unique, KeyType::Bool) => DatabaseOptions::create_map::<u8>(),
-            (IndexKind::Duplicate, KeyType::Int) => {
+            (IndexKind::Index, KeyType::Int) => {
                 DatabaseOptions::create_multimap::<Unaligned<i64>, Unaligned<Primary>>()
             }
-            (IndexKind::Duplicate, KeyType::Float) => {
+            (IndexKind::Index, KeyType::Float) => {
                 DatabaseOptions::create_multimap::<Unaligned<F64>, Unaligned<Primary>>()
             }
-            (IndexKind::Duplicate, KeyType::String) => {
+            (IndexKind::Index, KeyType::String) => {
                 DatabaseOptions::create_multimap::<str, Unaligned<Primary>>()
             }
-            (IndexKind::Duplicate, KeyType::Binary) => {
+            (IndexKind::Index, KeyType::Binary) => {
                 DatabaseOptions::create_multimap::<[u8], Unaligned<Primary>>()
             }
-            (IndexKind::Duplicate, KeyType::Bool) => {
+            (IndexKind::Index, KeyType::Bool) => {
                 DatabaseOptions::create_multimap::<u8, Unaligned<Primary>>()
             }
         };
@@ -166,7 +166,7 @@ impl Index {
 
         let f = match handle.kind {
             IndexKind::Unique => NOOVERWRITE,
-            IndexKind::Duplicate => NODUPDATA,
+            IndexKind::Index => NODUPDATA,
         };
 
         for key in new_keys {
@@ -210,7 +210,7 @@ impl Index {
                         Err(e) => return Err(e).wrap_err(),
                         _ => (),
                     },
-                    IndexKind::Duplicate => {
+                    IndexKind::Index => {
                         match cursor
                             .seek_k::<[u8], Unaligned<Primary>>(&access, key.into_raw())
                             .to_opt()
@@ -290,7 +290,7 @@ impl Index {
                     }
                 }
             }
-            IndexKind::Duplicate => {
+            IndexKind::Index => {
                 for item in CursorIter::new(
                     MaybeOwned::Owned(cursor),
                     access,

@@ -41,7 +41,7 @@ struct MyDoc {
     #[document(unique)]
     title: String,
     // key field
-    #[document(duplicate)]
+    #[document(index)]
     tag: Vec<String>,
     timestamp: u32,
 }
@@ -151,8 +151,8 @@ query!(
 
 | Internal Type | JSON Type  | Description                  |
 | ------------- | ---------  | -----------                  |
-| Unique        | "uni"      | Each value is unique         |
-| Duplicate     | "dup"      | The values can be duplicated |
+| Index         | "index"    | The values can be duplicated |
+| Unique        | "unique"   | Each value is unique         |
 
 Unique index guarantee that each value can be stored once, any duplicates disalowed.
 
@@ -191,7 +191,7 @@ Unique fields is pretty fit for sorting.
 | Bw(a, false, b, false) | {"$bw": [a, false, b, false]} | field \<in> a..b  | Between excluding a b |
 | Bw(a, true, b, false)  | {"$bw": [a, true, b, false]}  | field in> a..b    | Between incl a excl b |
 | Bw(a, false, b, true)  | {"$bw": [a, false, b, true]}  | field <in a..b    | Between excl a incl b |
-| Has                    | "$has"                        | field ?           | Has exists (not null) |
+| Has                    | "$has"                        | field ?           | Has value (not null)  |
 
 **NOTE: To be able to use particular field of document in filters you need create index for it first.**
 
@@ -834,7 +834,7 @@ mod tests {
     #[derive(Debug, Clone, Serialize, Deserialize, Document)]
     #[document(nested)]
     struct MetaData {
-        #[document(duplicate)]
+        #[document(index)]
         keywords: Vec<String>,
 
         description: String,
@@ -843,7 +843,7 @@ mod tests {
     #[derive(Debug, Clone, Serialize, Deserialize, Document)]
     #[document(nested)]
     struct LinkData {
-        #[document(duplicate)]
+        #[document(index)]
         title: Vec<String>,
 
         url: String,
@@ -863,23 +863,23 @@ mod tests {
     fn derive_key_fields() {
         assert_eq!(
             MetaData::key_fields(),
-            KeyFields::new().with_field(("keywords", KeyType::String, IndexKind::Duplicate))
+            KeyFields::new().with_field(("keywords", KeyType::String, IndexKind::Index))
         );
 
         assert_eq!(
             LinkData::key_fields(),
             KeyFields::new()
-                .with_field(("title", KeyType::String, IndexKind::Duplicate))
-                .with_field(("meta.keywords", KeyType::String, IndexKind::Duplicate))
+                .with_field(("title", KeyType::String, IndexKind::Index))
+                .with_field(("meta.keywords", KeyType::String, IndexKind::Index))
         );
 
         assert_eq!(
             RootDoc::key_fields(),
             KeyFields::new()
                 .with_field(("title", KeyType::String, IndexKind::Unique))
-                .with_field(("meta.keywords", KeyType::String, IndexKind::Duplicate))
-                .with_field(("links.title", KeyType::String, IndexKind::Duplicate))
-                .with_field(("links.meta.keywords", KeyType::String, IndexKind::Duplicate))
+                .with_field(("meta.keywords", KeyType::String, IndexKind::Index))
+                .with_field(("links.title", KeyType::String, IndexKind::Index))
+                .with_field(("links.meta.keywords", KeyType::String, IndexKind::Index))
         );
     }
 

@@ -111,13 +111,17 @@ macro_rules! _query_impl {
     (@index_field $($field:ident).+, $kind:ident, $type:ident) => (
         (_query_impl!(@field $($field).+), _query_impl!(@index_kind $kind), _query_impl!(@key_type $type))
     );
-    // unique
-    (@index_fields $args:tt, [ $($index:tt)* ], $($field:ident).+ $type:ident unique $($tokens:tt)*) => (
-        _query_impl!(@index_fields $args, [ $($index)* {_query_impl!(@index_field $($field).+, uni, $type)} ], $($tokens)*)
+    // normal index
+    (@index_fields $args:tt, [ $($index:tt)* ], $($field:ident).+ $type:ident index $($tokens:tt)*) => (
+        _query_impl!(@index_fields $args, [ $($index)* {_query_impl!(@index_field $($field).+, index, $type)} ], $($tokens)*)
     );
-    // duplicate
+    // unique index
+    (@index_fields $args:tt, [ $($index:tt)* ], $($field:ident).+ $type:ident unique $($tokens:tt)*) => (
+        _query_impl!(@index_fields $args, [ $($index)* {_query_impl!(@index_field $($field).+, unique, $type)} ], $($tokens)*)
+    );
+    // normal index (without specifier)
     (@index_fields $args:tt, [ $($index:tt)* ], $($field:ident).+ $type:ident $($tokens:tt)*) => (
-        _query_impl!(@index_fields $args, [ $($index)* {_query_impl!(@index_field $($field).+, dup, $type)} ], $($tokens)*)
+        _query_impl!(@index_fields $args, [ $($index)* {_query_impl!(@index_field $($field).+, index, $type)} ], $($tokens)*)
     );
     // skip comma
     (@index_fields $args:tt, $index:tt, , $($tokens:tt)*) => (
@@ -132,12 +136,8 @@ macro_rules! _query_impl {
         _query_impl!(@call $out, @index $coll, [ $($index),+ ])
     );
     // index kinds
+    (@index_kind index) => ( $crate::IndexKind::Index );
     (@index_kind unique) => ( $crate::IndexKind::Unique );
-    (@index_kind uniq) => ( $crate::IndexKind::Unique );
-    (@index_kind uni) => ( $crate::IndexKind::Unique );
-    (@index_kind duplicate) => ( $crate::IndexKind::Duplicate );
-    (@index_kind dupl) => ( $crate::IndexKind::Duplicate );
-    (@index_kind dup) => ( $crate::IndexKind::Duplicate );
     // key types
     (@key_type integer) => ( $crate::KeyType::Int );
     (@key_type int) => ( $crate::KeyType::Int );

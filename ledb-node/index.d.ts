@@ -27,7 +27,7 @@ export type KeyData = number | string | boolean | ArrayBufferLike;
 
 export type Value = any;
 
-export type IndexKind = 'uni' | 'dup';
+export type IndexKind = 'index' | 'unique';
 
 export interface KeyField {
     // field path

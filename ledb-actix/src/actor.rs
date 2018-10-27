@@ -459,7 +459,7 @@ mod tests {
                 }).and_then(move |res| {
                     assert_eq!(res.unwrap(), 2);
 
-                    addr3.send(EnsureIndex("blog", "tags", IndexKind::Duplicate, KeyType::String))
+                    addr3.send(EnsureIndex("blog", "tags", IndexKind::Index, KeyType::String))
                 }).and_then(move |res| {
                     assert!(res.is_ok());
                     
