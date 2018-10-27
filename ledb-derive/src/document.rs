@@ -63,6 +63,10 @@ pub fn derive_document(input: &DeriveInput) -> Result<TokenStream, String> {
             .into_iter()
             .map(|(field_name, field_type, index_kind)| {
                 let field_name = Lit::Str(LitStr::new(&field_name, Span::call_site()));
+                let field_type = match field_type {
+                    Ok(field_type) => quote! { <#field_type as ::ledb_types::DocumentKeyType>::key_type() },
+                    Err(key_type) => quote! { ::ledb_types::KeyType::#key_type },
+                };
                 let index_kind = match index_kind.as_str() {
                     "unique" => quote! { ::ledb_types::IndexKind::Unique },
                     "index" => quote! { ::ledb_types::IndexKind::Index },
@@ -70,7 +74,7 @@ pub fn derive_document(input: &DeriveInput) -> Result<TokenStream, String> {
                 };
 
                 quote! {
-                    (#field_name, <#field_type as ::ledb_types::DocumentKeyType>::key_type(), #index_kind)
+                    (#field_name, #field_type, #index_kind)
                 }
             });
 
@@ -128,7 +132,7 @@ fn get_primary_attribute(field: &Field) -> Option<String> {
     None
 }
 
-fn get_index_attribute(field: &Field) -> Option<(String, Type, String)> {
+fn get_index_attribute(field: &Field) -> Option<(String, Result<Type, TokenStream>, String)> {
     if let Some(ident) = &field.ident {
         for attr in &field.attrs {
             if attr.path.leading_colon.is_none()
@@ -138,16 +142,28 @@ fn get_index_attribute(field: &Field) -> Option<(String, Type, String)> {
                 for tt in attr.tts.clone() {
                     if let TokenTree::Group(group) = tt {
                         let mut tts = group.stream().into_iter();
-                        match (&tts.next(), &tts.next()) {
-                            (Some(TokenTree::Ident(kind)), None)
-                                if kind == "unique" || kind == "index" =>
-                            {
-                                return Some((
-                                    ident.to_string(),
-                                    field.ty.clone(),
-                                    kind.to_string(),
-                                ));
-                            }
+                        match &tts.next() {
+                            Some(TokenTree::Ident(kind))
+                                if kind == "unique" || kind == "index" => {
+                                    let key_type = if let Some(TokenTree::Ident(key)) = &tts.next() {
+                                        match key.to_string().as_ref() {
+                                            "int" | "integer" => Err(quote!(Int)),
+                                            "float" => Err(quote!(Float)),
+                                            "str" | "string" => Err(quote!(String)),
+                                            "bin" | "binary" => Err(quote!(Binary)),
+                                            "bool" | "boolean" => Err(quote!(Bool)),
+                                            _ => Ok(field.ty.clone()),
+                                        }
+                                    } else {
+                                        Ok(field.ty.clone())
+                                    };
+                                    
+                                    return Some((
+                                        ident.to_string(),
+                                        key_type,
+                                        kind.to_string(),
+                                    ));
+                                },
                             _ => (),
                         }
                     }
@@ -380,6 +396,47 @@ mod test {
                 impl ::ledb_types::Document for TestDoc {
                     fn primary_field() -> ::ledb_types::Identifier {
                         "_id".into()
+                    }
+                }
+            }.to_string()
+        );
+    }
+
+    #[test]
+    fn document_key_fields() {
+        let src: DeriveInput = parse_quote! {
+            #[derive(Document)]
+            struct TestDoc {
+                #[document(primary)]
+                id: u32,
+                #[document(unique)]
+                title: String,
+                #[document(index)]
+                tags: Vec<String>,
+                #[document(unique)]
+                #[serde(rename = "created")]
+                timestamp: i64,
+                #[document(index binary)]
+                hash: Vec<u8>,
+            }
+        };
+
+        let res = derive_document(&src).unwrap();
+
+        assert_eq!(
+            res.to_string(),
+            quote! {
+                impl ::ledb_types::Document for TestDoc {
+                    fn primary_field() -> ::ledb_types::Identifier {
+                        "id".into()
+                    }
+                    
+                    fn key_fields() -> ::ledb_types::KeyFields {
+                        ::ledb_types::KeyFields::new()
+                            .with_field(("title", <String as ::ledb_types::DocumentKeyType>::key_type(), ::ledb_types::IndexKind::Unique))
+                            .with_field(("tags", <Vec<String> as ::ledb_types::DocumentKeyType>::key_type(), ::ledb_types::IndexKind::Index))
+                            .with_field(("created", <i64 as ::ledb_types::DocumentKeyType>::key_type(), ::ledb_types::IndexKind::Unique))
+                            .with_field(("hash", ::ledb_types::KeyType::Binary, ::ledb_types::IndexKind::Index))
                     }
                 }
             }.to_string()
