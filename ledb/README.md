@@ -14,6 +14,10 @@ The abbreviation *LEDB* may be treated as an Lightweight Embedded DB, also Low E
 
 * [ledb Crate on crates.io](https://crates.io/crates/ledb)
 * [ledb API Docs on docs.rs](https://docs.rs/ledb)
+* [ledb-types Crate on crates.io](https://crates.io/crates/ledb-types)
+* [ledb-types API Docs on docs.rs](https://docs.rs/ledb-types)
+* [ledb-derive Crate on crates.io](https://crates.io/crates/ledb-derive)
+* [ledb-derive API Docs on docs.rs](https://docs.rs/ledb-derive)
 * [ledb-actix Crate on crates.io](https://crates.io/crates/ledb-actix)
 * [ledb-actix API Docs on docs.rs](https://docs.rs/ledb-actix)
 * [ledb NodeJS addon on npmjs.com](https://npmjs.com/package/ledb)
