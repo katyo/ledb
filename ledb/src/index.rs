@@ -13,27 +13,10 @@ use std::sync::Arc;
 use supercow::{ext::ConstDeref, Supercow};
 
 use super::{
-    DatabaseDef, Enumerable, KeyData, KeyType, OrderKind, Primary, RawDocument, Result, ResultWrap,
-    Serial, Storage, Value,
+    DatabaseDef, Enumerable, IndexKind, KeyData, KeyField, KeyType, OrderKind, Primary,
+    RawDocument, Result, ResultWrap, Serial, Storage, Value,
 };
 use float::F64;
-
-/// The kind of index
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum IndexKind {
-    /// Index which contains unique keys
-    #[serde(rename = "uni")]
-    Unique,
-    /// Index which may contains duplicates
-    #[serde(rename = "dup")]
-    Duplicate,
-}
-
-impl Default for IndexKind {
-    fn default() -> Self {
-        IndexKind::Duplicate
-    }
-}
 
 /// The definition of index
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -136,6 +119,14 @@ impl Index {
 
     pub fn key(&self) -> KeyType {
         self.handle().key
+    }
+
+    pub fn field(&self) -> KeyField {
+        let handle = self.handle();
+
+        KeyField::new(handle.path.clone())
+            .with_type(handle.key)
+            .with_kind(handle.kind)
     }
 
     pub(crate) fn update_index(

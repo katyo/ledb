@@ -1,9 +1,12 @@
 use proc_macro2::{Span, TokenStream, TokenTree};
-use syn::{Data, DeriveInput, Field, Fields, Lit, LitStr};
+use syn::{Data, DeriveInput, Field, Fields, Lit, LitStr, Type};
 
 pub fn derive_document(input: &DeriveInput) -> Result<TokenStream, String> {
     let type_name = &input.ident;
-    let mut primary_field: Option<String> = None;
+    let is_nested = has_nested_attribute(input);
+    let mut primary_field = None;
+    let mut index_fields = Vec::new();
+    let mut nested_docs = Vec::new();
 
     match &input.data {
         Data::Struct(data) => match &data.fields {
@@ -16,6 +19,20 @@ pub fn derive_document(input: &DeriveInput) -> Result<TokenStream, String> {
                             return Err(format!("Only one primary key field per document allowed"));
                         }
                     }
+
+                    if let Some((field_name, field_type, index_kind)) = get_index_attribute(&field)
+                    {
+                        index_fields.push((
+                            get_serde_rename(&field).unwrap_or(field_name),
+                            field_type,
+                            index_kind,
+                        ));
+                    }
+
+                    if let Some((field_name, field_type)) = get_nested_attribute(&field) {
+                        nested_docs
+                            .push((get_serde_rename(&field).unwrap_or(field_name), field_type));
+                    }
                 }
             }
             _ => return Err("Only struct with named fields can be represented as document".into()),
@@ -23,17 +40,63 @@ pub fn derive_document(input: &DeriveInput) -> Result<TokenStream, String> {
         _ => return Err("Storable documents can be implemented using structs only".into()),
     }
 
-    let primary_field = if let Some(primary_field) = primary_field {
-        Lit::Str(LitStr::new(&primary_field.to_string(), Span::call_site()))
+    let primary_field_fn = if let Some(primary_field) = primary_field {
+        let primary_field = Lit::Str(LitStr::new(&primary_field.to_string(), Span::call_site()));
+        quote! {
+            fn primary_field() -> ::ledb_types::Identifier {
+                #primary_field.into()
+            }
+        }
     } else {
-        return Err("Document must contain primary key field".into());
+        // We don't require primary key for nested documents
+        if is_nested {
+            TokenStream::new()
+        } else {
+            return Err("Document must contain primary key field".into());
+        }
+    };
+
+    let key_fields_fn = if index_fields.is_empty() && nested_docs.is_empty() {
+        TokenStream::new()
+    } else {
+        let index_fields = index_fields
+            .into_iter()
+            .map(|(field_name, field_type, index_kind)| {
+                let field_name = Lit::Str(LitStr::new(&field_name, Span::call_site()));
+                let index_kind = match index_kind.as_str() {
+                    "unique" => quote! { ::ledb_types::IndexKind::Unique },
+                    "duplicate" => quote! { ::ledb_types::IndexKind::Duplicate },
+                    _ => unreachable!(),
+                };
+
+                quote! {
+                    (#field_name, <#field_type as ::ledb_types::DocumentKeyType>::key_type(), #index_kind)
+                }
+            });
+
+        let nested_docs = nested_docs
+            .into_iter()
+            .map(|(field_name, field_type)| {
+                let field_name = Lit::Str(LitStr::new(&field_name, Span::call_site()));
+                
+                quote! {
+                    <#field_type as ::ledb_types::Document>::key_fields().with_parent(#field_name)
+                }
+            });
+
+        quote! {
+            fn key_fields() -> ::ledb_types::KeyFields {
+                ::ledb_types::KeyFields::new()
+                    #(.with_field(#index_fields))*
+                    #(.with_fields(#nested_docs))*
+            }
+        }
     };
 
     Ok(quote! {
-        impl ledb_types::Document for #type_name {
-            fn primary_field() -> ledb_types::Identifier {
-                #primary_field.into()
-            }
+        impl ::ledb_types::Document for #type_name {
+            #primary_field_fn
+            #key_fields_fn
         }
     })
 }
@@ -65,6 +128,85 @@ fn get_primary_attribute(field: &Field) -> Option<String> {
     None
 }
 
+fn get_index_attribute(field: &Field) -> Option<(String, Type, String)> {
+    if let Some(ident) = &field.ident {
+        for attr in &field.attrs {
+            if attr.path.leading_colon.is_none()
+                && attr.path.segments.len() == 1
+                && attr.path.segments.first().unwrap().value().ident == "document"
+            {
+                for tt in attr.tts.clone() {
+                    if let TokenTree::Group(group) = tt {
+                        let mut tts = group.stream().into_iter();
+                        match (&tts.next(), &tts.next()) {
+                            (Some(TokenTree::Ident(kind)), None)
+                                if kind == "unique" || kind == "duplicate" =>
+                            {
+                                return Some((
+                                    ident.to_string(),
+                                    field.ty.clone(),
+                                    kind.to_string(),
+                                ));
+                            }
+                            _ => (),
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    None
+}
+
+fn has_nested_attribute(input: &DeriveInput) -> bool {
+    for attr in &input.attrs {
+        if attr.path.leading_colon.is_none()
+            && attr.path.segments.len() == 1
+            && attr.path.segments.first().unwrap().value().ident == "document"
+        {
+            for tt in attr.tts.clone() {
+                if let TokenTree::Group(group) = tt {
+                    let mut tts = group.stream().into_iter();
+                    match (&tts.next(), &tts.next()) {
+                        (Some(TokenTree::Ident(kind)), None) if kind == "nested" => {
+                            return true;
+                        }
+                        _ => (),
+                    }
+                }
+            }
+        }
+    }
+
+    false
+}
+
+fn get_nested_attribute(field: &Field) -> Option<(String, Type)> {
+    if let Some(ident) = &field.ident {
+        for attr in &field.attrs {
+            if attr.path.leading_colon.is_none()
+                && attr.path.segments.len() == 1
+                && attr.path.segments.first().unwrap().value().ident == "document"
+            {
+                for tt in attr.tts.clone() {
+                    if let TokenTree::Group(group) = tt {
+                        let mut tts = group.stream().into_iter();
+                        match (&tts.next(), &tts.next()) {
+                            (Some(TokenTree::Ident(kind)), None) if kind == "nested" => {
+                                return Some((ident.to_string(), field.ty.clone()));
+                            }
+                            _ => (),
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    None
+}
+
 fn get_serde_rename(field: &Field) -> Option<String> {
     let mut field_name = None;
 
@@ -76,11 +218,12 @@ fn get_serde_rename(field: &Field) -> Option<String> {
             for tt in attr.tts.clone() {
                 if let TokenTree::Group(group) = tt {
                     let mut tts = group.stream().into_iter();
-                    match (&tts.next(), &tts.next(), &tts.next()) {
+                    match (&tts.next(), &tts.next(), &tts.next(), &tts.next()) {
                         (
                             Some(TokenTree::Ident(name)),
                             Some(TokenTree::Punct(op)),
                             Some(TokenTree::Literal(val)),
+                            None,
                         )
                             if name == "rename" && op.as_char() == '=' =>
                         {
@@ -117,8 +260,8 @@ mod test {
         assert_eq!(
             res.to_string(),
             quote! {
-                impl ledb_types::Document for TestDoc {
-                    fn primary_field() -> ledb_types::Identifier {
+                impl ::ledb_types::Document for TestDoc {
+                    fn primary_field() -> ::ledb_types::Identifier {
                         "id".into()
                     }
                 }
@@ -209,8 +352,8 @@ mod test {
         assert_eq!(
             res.to_string(),
             quote! {
-                impl ledb_types::Document for TestDoc {
-                    fn primary_field() -> ledb_types::Identifier {
+                impl ::ledb_types::Document for TestDoc {
+                    fn primary_field() -> ::ledb_types::Identifier {
                         "_id".into()
                     }
                 }
@@ -234,9 +377,91 @@ mod test {
         assert_eq!(
             res.to_string(),
             quote! {
-                impl ledb_types::Document for TestDoc {
-                    fn primary_field() -> ledb_types::Identifier {
+                impl ::ledb_types::Document for TestDoc {
+                    fn primary_field() -> ::ledb_types::Identifier {
                         "_id".into()
+                    }
+                }
+            }.to_string()
+        );
+    }
+
+    #[test]
+    fn document_nested() {
+        let src: DeriveInput = parse_quote! {
+            #[derive(Document)]
+            #[document(nested)]
+            struct TestDoc {
+                #[document(unique)]
+                field: String,
+            }
+        };
+
+        let res = derive_document(&src).unwrap();
+
+        assert_eq!(
+            res.to_string(),
+            quote! {
+                impl ::ledb_types::Document for TestDoc {
+                    fn key_fields() -> ::ledb_types::KeyFields {
+                        ::ledb_types::KeyFields::new()
+                            .with_field(("field", <String as ::ledb_types::DocumentKeyType>::key_type(), ::ledb_types::IndexKind::Unique))
+                    }
+                }
+            }.to_string()
+        );
+    }
+
+    #[test]
+    fn document_nested_nested() {
+        let src1: DeriveInput = parse_quote! {
+            #[derive(Document)]
+            struct TestDoc {
+                #[document(primary)]
+                id: Option<Primary>,
+                #[document(unique)]
+                field: String,
+                #[document(nested)]
+                nested: Vec<NestedDoc>,
+            }
+        };
+
+        let src2: DeriveInput = parse_quote! {
+            #[derive(Document)]
+            #[document(nested)]
+            struct NestDoc {
+                #[document(duplicate)]
+                field: i32,
+            }
+        };
+
+        let res1 = derive_document(&src1).unwrap();
+        let res2 = derive_document(&src2).unwrap();
+
+        assert_eq!(
+            res1.to_string(),
+            quote! {
+                impl ::ledb_types::Document for TestDoc {
+                    fn primary_field() -> ::ledb_types::Identifier {
+                        "id".into()
+                    }
+                    
+                    fn key_fields() -> ::ledb_types::KeyFields {
+                        ::ledb_types::KeyFields::new()
+                            .with_field(("field", <String as ::ledb_types::DocumentKeyType>::key_type(), ::ledb_types::IndexKind::Unique))
+                            .with_fields(<Vec<NestedDoc> as ::ledb_types::Document>::key_fields().with_parent("nested"))
+                    }
+                }
+            }.to_string()
+        );
+
+        assert_eq!(
+            res2.to_string(),
+            quote! {
+                impl ::ledb_types::Document for NestDoc {
+                    fn key_fields() -> ::ledb_types::KeyFields {
+                        ::ledb_types::KeyFields::new()
+                            .with_field(("field", <i32 as ::ledb_types::DocumentKeyType>::key_type(), ::ledb_types::IndexKind::Duplicate))
                     }
                 }
             }.to_string()

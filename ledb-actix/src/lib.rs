@@ -241,7 +241,7 @@ mod scope;
 
 pub use ledb::{
     Action, Comp, Cond, Document, DocumentsIterator, Filter, Identifier, IndexKind, Info, KeyData,
-    KeyType, Modify, Options, Order, OrderKind, Primary, Stats, Value,
+    KeyField, KeyFields, KeyType, Modify, Options, Order, OrderKind, Primary, Stats, Value,
 };
 
 pub use actor::*;

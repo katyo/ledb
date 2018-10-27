@@ -34,9 +34,14 @@ use ledb::{Storage, Options, IndexKind, KeyType, Filter, Comp, Order, OrderKind,
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Document)]
 struct MyDoc {
+    // primary key field
     #[document(primary)]
     id: Option<Primary>,
+    // unique key field
+    #[document(unique)]
     title: String,
+    // key field
+    #[document(duplicate)]
     tag: Vec<String>,
     timestamp: u32,
 }
@@ -57,6 +62,9 @@ fn main() {
         tag str,
         timestamp int unique,
     ).unwrap();
+
+    // Ensure indexes using document type
+    query!(index MyDoc for collection).unwrap();
     
     // Insert JSON document
     let first_id = query!(insert into collection {
@@ -348,6 +356,10 @@ extern crate ledb_types;
 
 #[cfg(test)]
 #[macro_use]
+extern crate ledb_derive;
+
+#[cfg(test)]
+#[macro_use]
 mod test;
 
 mod collection;
@@ -366,15 +378,15 @@ mod value;
 #[macro_use]
 mod macros;
 
+pub use ledb_types::{Document, Identifier, IndexKind, KeyField, KeyFields, KeyType, Primary};
+
 pub use collection::{Collection, DocumentsIterator};
 pub use document::{to_value, RawDocument, Value};
 pub use error::{Error, Result, ResultWrap};
 pub use filter::{Comp, Cond, Filter, Order, OrderKind};
-pub use index::IndexKind;
-pub use ledb_types::{Document, Identifier, Primary};
 pub use modify::{Action, Modify, WrappedRegex};
 pub use storage::{Info, Options, Stats, Storage};
-pub use value::{KeyData, KeyType};
+pub use value::KeyData;
 
 use collection::CollectionDef;
 use enumerate::{Enumerable, Serial, SerialGenerator};
@@ -385,7 +397,9 @@ use storage::{DatabaseDef, StorageData};
 
 #[cfg(test)]
 mod tests {
-    use super::{Collection, Document, Identifier, Primary, Result, Value};
+    use super::{
+        Collection, Document, Identifier, IndexKind, KeyFields, KeyType, Primary, Result, Value,
+    };
     use serde_cbor::ObjectKey;
     use test::test_db;
 
@@ -799,5 +813,81 @@ mod tests {
         assert_found!(query!(find in c where s == "def"));
         assert_found!(query!(find in c where s == "abc"), 1);
         assert_found!(query!(find in c where s == "klm"), 2);
+    }
+
+    // derive
+    #[derive(Debug, Clone, Serialize, Deserialize, Document)]
+    struct RootDoc {
+        #[document(primary)]
+        id: Option<Primary>,
+
+        #[document(unique)]
+        title: String,
+
+        #[document(nested)]
+        meta: MetaData,
+
+        #[document(nested)]
+        links: Vec<LinkData>,
+    }
+
+    #[derive(Debug, Clone, Serialize, Deserialize, Document)]
+    #[document(nested)]
+    struct MetaData {
+        #[document(duplicate)]
+        keywords: Vec<String>,
+
+        description: String,
+    }
+
+    #[derive(Debug, Clone, Serialize, Deserialize, Document)]
+    #[document(nested)]
+    struct LinkData {
+        #[document(duplicate)]
+        title: Vec<String>,
+
+        url: String,
+
+        #[document(nested)]
+        meta: MetaData,
+    }
+
+    #[test]
+    fn derive_primary() {
+        assert_eq!(MetaData::primary_field().as_ref(), "$");
+        assert_eq!(LinkData::primary_field().as_ref(), "$");
+        assert_eq!(RootDoc::primary_field().as_ref(), "id");
+    }
+
+    #[test]
+    fn derive_key_fields() {
+        assert_eq!(
+            MetaData::key_fields(),
+            KeyFields::new().with_field(("keywords", KeyType::String, IndexKind::Duplicate))
+        );
+
+        assert_eq!(
+            LinkData::key_fields(),
+            KeyFields::new()
+                .with_field(("title", KeyType::String, IndexKind::Duplicate))
+                .with_field(("meta.keywords", KeyType::String, IndexKind::Duplicate))
+        );
+
+        assert_eq!(
+            RootDoc::key_fields(),
+            KeyFields::new()
+                .with_field(("title", KeyType::String, IndexKind::Unique))
+                .with_field(("meta.keywords", KeyType::String, IndexKind::Duplicate))
+                .with_field(("links.title", KeyType::String, IndexKind::Duplicate))
+                .with_field(("links.meta.keywords", KeyType::String, IndexKind::Duplicate))
+        );
+    }
+
+    #[test]
+    fn derived_index() {
+        let s = test_db("derived").unwrap();
+        let c = s.collection("test").unwrap();
+
+        query!(index RootDoc for c).unwrap();
     }
 }

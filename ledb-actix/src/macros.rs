@@ -13,8 +13,11 @@ macro_rules! query {
 #[macro_export]
 #[doc(hidden)]
 macro_rules! _query_actix {
-    (@index $coll:expr, $($indexes:tt),+) => (
+    (@index $coll:expr, [ $($indexes:tt),+ ]) => (
         $crate::SetIndexes(_query_impl!(@stringify $coll), _query_impl![@vec $($indexes),+])
+    );
+    (@index $coll:expr, $($indexes:tt)+) => (
+        $crate::SetIndexes(_query_impl!(@stringify $coll), $($indexes)+)
     );
     (@find $type:tt, $coll:expr, $filter:expr, $order:expr) => (
         $crate::Find::<_, $type>(_query_impl!(@stringify $coll), $filter, $order)

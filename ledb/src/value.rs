@@ -4,28 +4,7 @@ use std::borrow::Cow;
 use std::mem::transmute;
 use std::str::from_utf8;
 
-use super::{Result, ResultWrap, Value};
-
-/// The type of key
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum KeyType {
-    #[serde(rename = "int")]
-    Int,
-    #[serde(rename = "float")]
-    Float,
-    #[serde(rename = "string")]
-    String,
-    #[serde(rename = "binary")]
-    Binary,
-    #[serde(rename = "bool")]
-    Bool,
-}
-
-impl Default for KeyType {
-    fn default() -> Self {
-        KeyType::Binary
-    }
-}
+use super::{KeyType, Result, ResultWrap, Value};
 
 /// The data of key
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]

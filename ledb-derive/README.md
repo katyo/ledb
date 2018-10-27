@@ -37,20 +37,57 @@ struct MyDoc {
     // define optional primary key field
     #[document(primary)]
     id: Option<Primary>,
-    // define other fields
+    // define unique key field
+    #[document(unique)]
     title: String,
+    // define index fields
+    #[document(duplicate)]
     tag: Vec<String>,
+    #[document(unique)]
     timestamp: u32,
+    // define nested document
+    #[document(nested)]
+    meta: MetaData,
+}
+
+#[derive(Serialize, Deserialize, Document)]
+#[document(nested)]
+struct MetaData {
+    // define index field
+    #[document(duplicate)]
+    keywords: Vec<String>,
+    // define other fields
+    description: String,
 }
 ```
 
-This automatically generate `Document` trait like so:
+This automatically generate `Document` traits like so:
 
 ```rust
 impl Document for MyDoc {
     // declare primary key field name
     fn primary_field() -> Identifier {
         "id".into()
+    }
+    
+    // declare other key fields for index
+    fn key_fields() -> KeyFields {
+        KeyFields::new()
+            // add key fields of document
+            .with_field(("title", String::key_type(), IndexKind::Unique))
+            .with_field(("tag", String::key_type(), IndexKind::Duplicate))
+            .with_field(("timestamp", u32::key_type(), IndexKind::Unique))
+            // add key fields from nested document
+            .with_fields(MetaData::key_fields().with_parent("meta"))
+    }
+}
+
+impl Document for MetaData {
+    // declare key fields for index
+    fn key_fields() -> KeyFields {
+        KeyFields::new()
+            // add key fields of document
+            .with_field(("keywords", KeyType::String, IndexKind::Duplicate))
     }
 }
 ```

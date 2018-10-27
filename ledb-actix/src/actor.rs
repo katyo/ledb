@@ -6,7 +6,7 @@ use actix::{Actor, Addr, Message, SyncContext, SyncArbiter, Handler};
 
 use super::{
     Document, DocumentsIterator, Filter, Identifier, IndexKind, Info,
-    KeyType, Modify, Order, Primary, Stats, Options,
+    KeyType, Modify, Order, Primary, Stats, Options, KeyFields
 };
 
 /// Storage actor
@@ -142,9 +142,6 @@ pub fn GetIndexes<C: Into<Identifier>>(coll: C) -> GetIndexesMsg {
     GetIndexesMsg(coll.into())
 }
 
-/// The list of indexes
-pub type ListIndexes = Vec<(Identifier, IndexKind, KeyType)>;
-
 /// Get indexes of collection
 ///
 /// *NOTE: Use `GetIndexes` function instead*
@@ -152,7 +149,7 @@ pub type ListIndexes = Vec<(Identifier, IndexKind, KeyType)>;
 pub struct GetIndexesMsg(Identifier);
 
 impl Message for GetIndexesMsg {
-    type Result = LeResult<ListIndexes>;
+    type Result = LeResult<KeyFields>;
 }
 
 impl Handler<GetIndexesMsg> for Storage {
@@ -165,7 +162,7 @@ impl Handler<GetIndexesMsg> for Storage {
 
 /// Set indexes for collection
 #[allow(non_snake_case)]
-pub fn SetIndexes<C: Into<Identifier>, I: Into<ListIndexes>>(coll: C, indexes: I) -> SetIndexesMsg {
+pub fn SetIndexes<C: Into<Identifier>, I: Into<KeyFields>>(coll: C, indexes: I) -> SetIndexesMsg {
     SetIndexesMsg(coll.into(), indexes.into())
 }
 
@@ -173,7 +170,7 @@ pub fn SetIndexes<C: Into<Identifier>, I: Into<ListIndexes>>(coll: C, indexes: I
 ///
 /// *NOTE: Use `SetIndexes` function instead*
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SetIndexesMsg(Identifier, ListIndexes);
+pub struct SetIndexesMsg(Identifier, KeyFields);
 
 impl Message for SetIndexesMsg {
     type Result = LeResult<()>;

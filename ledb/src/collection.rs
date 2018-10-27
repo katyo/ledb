@@ -14,8 +14,8 @@ use std::sync::{Arc, RwLock};
 use supercow::{ext::ConstDeref, Supercow};
 
 use super::{
-    DatabaseDef, Document, Enumerable, Filter, Identifier, Index, IndexDef, IndexKind, KeyType,
-    Modify, Order, OrderKind, Primary, RawDocument, Result, ResultWrap, Serial, Storage,
+    DatabaseDef, Document, Enumerable, Filter, Index, IndexDef, IndexKind, KeyField, KeyFields,
+    KeyType, Modify, Order, OrderKind, Primary, RawDocument, Result, ResultWrap, Serial, Storage,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -486,29 +486,33 @@ impl Collection {
     }
 
     /// Get indexes info from the collection
-    pub fn get_indexes(&self) -> Result<Vec<(Identifier, IndexKind, KeyType)>> {
+    pub fn get_indexes(&self) -> Result<KeyFields> {
         let handle = self.handle();
 
         let indexes = handle.indexes.read().wrap_err()?;
-        Ok(indexes
-            .iter()
-            .map(|index| {
-                (
-                    Identifier::from(index.path().to_owned()),
-                    index.kind(),
-                    index.key(),
-                )
-            }).collect())
+        Ok(indexes.iter().map(Index::field).collect::<Vec<_>>().into())
     }
 
     /// Set indexes of collection
     ///
     /// This method overrides collection indexes
-    pub fn set_indexes(&self, indexes: &[(Identifier, IndexKind, KeyType)]) -> Result<()> {
-        for (path, kind, key) in indexes {
-            self.ensure_index(path, *kind, *key)?;
+    pub fn set_indexes<T, I: AsRef<[T]>>(&self, indexes: I) -> Result<()>
+    where
+        T: Clone,
+        KeyField: From<T>,
+    {
+        for key_field in indexes.as_ref() {
+            let KeyField { path, kind, key } = KeyField::from(key_field.clone());
+            self.ensure_index(path, kind, key)?;
         }
         Ok(())
+    }
+
+    /// Set indexes using document type
+    ///
+    /// This method overrides collection indexes
+    pub fn index<T: Document>(&self) -> Result<()> {
+        self.set_indexes(T::key_fields())
     }
 
     /// Ensure index for the collection

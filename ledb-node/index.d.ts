@@ -29,11 +29,16 @@ export type Value = any;
 
 export type IndexKind = 'uni' | 'dup';
 
-export type Index = [
-    string, // field
-    IndexKind, // kind
-    KeyType // type
-];
+export interface KeyField {
+    // field path
+    path: string,
+    // key type
+    key: KeyType,
+    // index kind
+    kind: IndexKind,
+}
+
+export type KeyFields = KeyField[];
 
 export type Filter
     = FilterCond
@@ -181,11 +186,11 @@ export class Collection {
     put<T extends GenericDocument>(doc: T): void;
     delete(id: Primary): boolean;
 
-    get_indexes(): Index[];
-    set_indexes(indexes: Index[]): void;
-    has_index(field: string): void;
-    ensure_index(field: string, kind: IndexKind, type: KeyType): boolean;
-    drop_index(field: string): boolean;
+    get_indexes(): KeyFields;
+    set_indexes(indexes: KeyFields): void;
+    has_index(path: string): void;
+    ensure_index(path: string, kind: IndexKind, key: KeyType): boolean;
+    drop_index(path: string): boolean;
 }
 
 // Get openned databases

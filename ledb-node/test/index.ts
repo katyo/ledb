@@ -86,24 +86,24 @@ describe('collection', () => {
         dse(coll.has_index("title"), true);
         dse(coll.has_index("tag"), false);
         dse(coll.has_index("timestamp"), false);
-        dse(coll.get_indexes(), [["title", "uni", "string"]]);
+        dse(coll.get_indexes(), [{path: "title", kind: "uni", key: "string"}]);
         
         dse(coll.ensure_index("tag", "dup", "string"), true);
         
         dse(coll.has_index("title"), true);
         dse(coll.has_index("tag"), true);
         dse(coll.has_index("timestamp"), false);
-        dse(coll.get_indexes(), [["title", "uni", "string"],
-                                 ["tag", "dup", "string"]]);
+        dse(coll.get_indexes(), [{path: "title", kind: "uni", key: "string"},
+                                 {path: "tag", kind: "dup", key: "string"}]);
 
         dse(coll.ensure_index("timestamp", "dup", "int"), true);
         
         dse(coll.has_index("title"), true);
         dse(coll.has_index("tag"), true);
         dse(coll.has_index("timestamp"), true);
-        dse(coll.get_indexes(), [["title", "uni", "string"],
-                                 ["tag", "dup", "string"],
-                                 ["timestamp", "dup", "int"]]);
+        dse(coll.get_indexes(), [{path: "title", kind: "uni", key: "string"},
+                                 {path: "tag", kind: "dup", key: "string"},
+                                 {path: "timestamp", kind: "dup", key: "int"}]);
     });
 
     it('find', () => {

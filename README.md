@@ -14,10 +14,22 @@ The abbreviation *LEDB* may be treated as an Lightweight Embedded DB, also Low E
 
 This is a basic library which implements document storage and query functionality.
 
-See the [README](ledb/README.md).
+See [README](ledb/README.md).
+
+## Basic types for storable documents (`ledb-types` crate)
+
+This crate defines basic types and traits which can be used to turn structs into storable documents.
+
+See [README](ledb-types/README.md).
+
+## Derive macro for storable documents (`ledb-derive` crate)
+
+The crate implements derive macros which helps defining storable documents.
+
+See [README](ledb-derive/README.md).
 
 ## Actor and REST-interface for documents storage (`ledb-actix` crate)
 
 This is an actor which helps interacting with database in applications which builts on the [actix](https://actix.rs/) actor framework.
 
-See the [README](ledb-actix/README.md).
+See [README](ledb-actix/README.md).

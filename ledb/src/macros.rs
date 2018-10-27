@@ -62,7 +62,8 @@ macro_rules! query {
 #[macro_export]
 #[doc(hidden)]
 macro_rules! _query_native {
-    (@index $coll:expr, $($indexes:tt),+) => ( $coll.set_indexes(&[$($indexes),+]) );
+    (@index $coll:expr, [ $($indexes:tt),+ ]) => ( $coll.set_indexes(&[$($indexes),+]) );
+    (@index $coll:expr, $($indexes:tt)+) => ( $coll.set_indexes($($indexes)+) );
     (@find $type:tt, $coll:expr, $filter:expr, $order:expr) => ( $coll.find::<$type>($filter, $order) );
     (@insert $coll:expr, $doc:expr) => ( $coll.insert(&$doc) );
     (@update $coll:expr, $filter:expr, $modify:expr) => ( $coll.update($filter, $modify) );
@@ -73,6 +74,9 @@ macro_rules! _query_native {
 #[macro_export]
 #[doc(hidden)]
 macro_rules! _query_impl {
+    // ensure index with document type
+    (@query $out:ident, index $type:tt for $coll:tt) => ( _query_impl!(@index_document ($out, $type, $coll)) );
+    
     // ensure index
     (@query $out:ident, index for $coll:tt $($tokens:tt)+) => ( _query_impl!(@index ($out, $coll), $($tokens)+) );
 
@@ -94,13 +98,18 @@ macro_rules! _query_impl {
     // Parse query
     //
 
+    // index document query
+    (@index_document ($out:ident, $type:tt, $coll:expr)) => (
+        _query_impl!(@call $out, @index $coll, <$type as $crate::Document>::key_fields())
+    );
+
     // index query
     (@index $args:tt, $($tokens:tt)+) => (
         _query_impl!(@index_fields $args, [], $($tokens)+)
     );
     // index field tuple
     (@index_field $($field:ident).+, $kind:ident, $type:ident) => (
-        (_query_impl!(@field $($field).+).into(), _query_impl!(@index_kind $kind), _query_impl!(@key_type $type))
+        (_query_impl!(@field $($field).+), _query_impl!(@index_kind $kind), _query_impl!(@key_type $type))
     );
     // unique
     (@index_fields $args:tt, [ $($index:tt)* ], $($field:ident).+ $type:ident unique $($tokens:tt)*) => (
@@ -120,7 +129,7 @@ macro_rules! _query_impl {
     );
     // end fields
     (@index_fields ($out:ident, $coll:expr), [ $($index:tt)+ ], $(,)*) => (
-        _query_impl!(@call $out, @index $coll, $($index),+)
+        _query_impl!(@call $out, @index $coll, [ $($index),+ ])
     );
     // index kinds
     (@index_kind unique) => ( $crate::IndexKind::Unique );

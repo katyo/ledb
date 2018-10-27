@@ -1,4 +1,5 @@
 use std::borrow::Borrow;
+use std::fmt::{Display, Formatter, Result as FmtResult};
 use std::hash::{Hash, Hasher};
 use std::ops::Deref;
 
@@ -15,6 +16,12 @@ pub enum Identifier {
 impl Default for Identifier {
     fn default() -> Self {
         Identifier::Refer("")
+    }
+}
+
+impl Display for Identifier {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        f.write_str(&self)
     }
 }
 
