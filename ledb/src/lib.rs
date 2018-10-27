@@ -583,9 +583,9 @@ mod tests {
         mk_index(&c).unwrap();
         fill_data(&c).unwrap();
 
-        assert_eq!(query!(find Value in c order by s >).unwrap().len(), 6);
-        assert_found!(query!(find in c order by s >), 3, 5, 6, 1, 2, 4);
-        assert_found!(query!(find in c order by s <), 4, 2, 1, 6, 5, 3);
+        assert_eq!(query!(find Value in c order by s >).unwrap().len(), 7);
+        assert_found!(query!(find in c order by s >), 7, 3, 5, 6, 1, 2, 4);
+        assert_found!(query!(find in c order by s <), 4, 2, 1, 6, 5, 3, 7);
     }
 
     #[test]

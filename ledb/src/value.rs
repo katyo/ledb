@@ -70,8 +70,16 @@ impl KeyData {
         match self {
             Int(val) => unsafe { transmute::<&i64, &[u8; 8]>(val) },
             Float(val) => unsafe { transmute::<&f64, &[u8; 8]>(val) },
-            String(val) => val.as_bytes(),
-            Binary(val) => val.as_slice(),
+            String(val) => if val.is_empty() {
+                b"\0"
+            } else {
+                val.as_bytes()
+            },
+            Binary(val) => if val.is_empty() {
+                &[0u8]
+            } else {
+                val.as_slice()
+            },
             Bool(val) => unsafe { transmute::<&bool, &[u8; 1]>(val) },
         }
     }
