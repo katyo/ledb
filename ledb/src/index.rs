@@ -5,6 +5,7 @@ use lmdb::{
     ReadTransaction, Unaligned, WriteAccessor,
 };
 use ron::ser::to_string as to_db_name;
+use serde_cbor::ObjectKey;
 use std::collections::HashSet;
 use std::mem::replace;
 use std::ops::Deref;
@@ -437,12 +438,25 @@ fn extract_field_values<'a, 'i: 'a, I: Iterator<Item = &'i str> + Clone>(
     }
 }
 
+fn key_to_val(key: &ObjectKey) -> Value {
+    match key {
+        ObjectKey::Integer(val) => Value::I64(*val),
+        ObjectKey::String(val) => Value::String(val.clone()),
+        ObjectKey::Bool(val) => Value::Bool(*val),
+        ObjectKey::Bytes(val) => Value::Bytes(val.clone()),
+        ObjectKey::Null => Value::Null,
+    }
+}
+
 fn extract_field_primitives(doc: &Value, typ: KeyType, keys: &mut HashSet<KeyData>) {
     use serde_cbor::Value::*;
     match (typ, doc) {
         (_, Array(val)) => val
             .iter()
             .for_each(|doc| extract_field_primitives(doc, typ, keys)),
+        (_, Object(val)) => val
+            .iter()
+            .for_each(|(key, _doc)| extract_field_primitives(&key_to_val(key), typ, keys)),
         (typ, val) => {
             if let Some(val) = KeyData::from_val(&val) {
                 if let Some(val) = val.into_type(typ) {
