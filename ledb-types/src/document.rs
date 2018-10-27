@@ -106,7 +106,7 @@ impl<K, T: Document> Document for HashMap<K, T> {
     }
 
     fn key_fields() -> KeyFields {
-        T::key_fields()
+        T::key_fields().with_parent("*")
     }
 }
 
@@ -126,7 +126,7 @@ impl<K, T: Document> Document for BTreeMap<K, T> {
     }
 
     fn key_fields() -> KeyFields {
-        T::key_fields()
+        T::key_fields().with_parent("*")
     }
 }
 

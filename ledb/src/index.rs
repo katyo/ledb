@@ -424,6 +424,9 @@ fn extract_field_values<'a, 'i: 'a, I: Iterator<Item = &'i str> + Clone>(
             Array(val) => val
                 .iter()
                 .for_each(|doc| extract_field_values(doc, typ, path, keys)),
+            Object(val) if name == "*" => val
+                .iter()
+                .for_each(|(_key, doc)| extract_field_values(doc, typ, path, keys)),
             Object(val) => if let Some(doc) = val.get(&name.to_owned().into()) {
                 extract_field_values(doc, typ, &sub_path, keys);
             },
