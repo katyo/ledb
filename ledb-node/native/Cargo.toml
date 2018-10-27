@@ -26,4 +26,4 @@ lto = true
 [patch.crates-io]
 neon-serde = { git = "https://github.com/apendleton/neon-serde", branch = "oh-point-two" }
 #ledb = { path = "../../ledb" }
-#ledb = { git = "https://github.com/katyo/ledb" }
+ledb = { git = "https://github.com/katyo/ledb" }
