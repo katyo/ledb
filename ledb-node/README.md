@@ -28,6 +28,12 @@ The abbreviation *LEDB* may be treated as an Lightweight Embedded DB, also Low E
 * Flexible JSON query filters similar to a [MongoDB](https://en.wikipedia.org/wiki/MongoDB).
 * The [LMDB](https://en.wikipedia.org/wiki/Lightning_Memory-Mapped_Database) as backend for document storage and indexing engine.
 
+## Installation
+
+Until pre-compiled binaries is missing you need [Rust](https://www.rust-lang.org/) build environment for building native module.
+
+Use latest stable Rust compiler. You can install it using [rustup](https://rustup.rs/) or packages in your system.
+
 ## Usage example
 
 ```typescript
@@ -58,8 +64,8 @@ posts.put(doc);
 posts.delete(doc_id);
 
 // Ensure indexes
-posts.ensure_index("title", "uni", "string")
-posts.ensure_index("tag", "dup", "string")
+posts.ensure_index("title", "unique", "string")
+posts.ensure_index("tag", "index", "string")
 
 // Get indexes
 console.log("Indexes of post:", posts.get_indexes())
