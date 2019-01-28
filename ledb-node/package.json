@@ -14,7 +14,7 @@
     "neon-cli": "^0.2"
   },
   "scripts": {
-    "install": "RUSTFLAGS='-C link-arg=-Wl,-init=node_addon_init' neon build --release",
+    "install": "neon build --release",
     "test": "mocha -r ts-node/register test/index.ts -R spec"
   },
   "devDependencies": {

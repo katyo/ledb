@@ -24,5 +24,7 @@ codegen-units = 1
 lto = true
 
 [patch.crates-io]
+neon = { git = "https://github.com/katyo/neon", branch = "fix-build-release" }
+neon-runtime = { git = "https://github.com/katyo/neon", branch = "fix-build-release" }
 #ledb = { path = "../../ledb" }
 ledb = { git = "https://github.com/katyo/ledb" }
