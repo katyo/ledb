@@ -1,10 +1,15 @@
-use std::borrow::Cow;
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
-use std::iter::IntoIterator;
-use std::ops::{Deref, DerefMut};
-use std::rc::{Rc, Weak as RcWeak};
-use std::sync::{Arc, Mutex, RwLock, Weak as ArcWeak};
-use std::vec::IntoIter as VecIntoIter;
+use std::{
+    borrow::Cow,
+    hash::BuildHasher,
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque},
+    iter::IntoIterator,
+    ops::{Deref, DerefMut},
+    rc::{Rc, Weak as RcWeak},
+    sync::{Arc, Mutex, RwLock, Weak as ArcWeak},
+    vec::IntoIter as VecIntoIter,
+};
+
+use serde::{Serialize, Deserialize};
 
 #[cfg(feature = "bytes")]
 use bytes::{Bytes, BytesMut};
@@ -13,7 +18,9 @@ use bytes::{Bytes, BytesMut};
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct KeyField {
     pub path: String,
+    #[serde(default)]
     pub key: KeyType,
+    #[serde(default)]
     pub kind: IndexKind,
 }
 
@@ -155,11 +162,17 @@ impl Into<(String, IndexKind, KeyType)> for KeyField {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct KeyFields(Vec<KeyField>);
 
+impl Default for KeyFields {
+    fn default() -> Self {
+        KeyFields(Vec::default())
+    }
+}
+
 impl KeyFields {
     /// Create new key fields set
     #[inline]
     pub fn new() -> Self {
-        KeyFields(Vec::new())
+        KeyFields::default()
     }
 
     /// Add key field to set
@@ -183,7 +196,7 @@ impl KeyFields {
     ///
     /// This makes key fields in set to be children for parent path
     pub fn set_parent<S: AsRef<str>>(&mut self, parent: S) {
-        for ref mut field in &mut self.0 {
+        for field in &mut self.0 {
             field.set_parent(&parent);
         }
     }
@@ -487,13 +500,13 @@ impl<T: DocumentKeyType> DocumentKeyType for VecDeque<T> {
     }
 }
 
-impl<T: DocumentKeyType> DocumentKeyType for HashSet<T> {
+impl<T: DocumentKeyType, S: BuildHasher> DocumentKeyType for HashSet<T, S> {
     fn key_type() -> KeyType {
         T::key_type()
     }
 }
 
-impl<K, T: DocumentKeyType> DocumentKeyType for HashMap<K, T> {
+impl<K, T: DocumentKeyType, S: BuildHasher> DocumentKeyType for HashMap<K, T, S> {
     fn key_type() -> KeyType {
         T::key_type()
     }

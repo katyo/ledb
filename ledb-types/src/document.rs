@@ -1,8 +1,11 @@
 use super::{Identifier, KeyFields};
-use std::borrow::Cow;
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
-use std::rc::{Rc, Weak as RcWeak};
-use std::sync::{Arc, Mutex, RwLock, Weak as ArcWeak};
+use std::{
+    borrow::Cow,
+    hash::BuildHasher,
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque},
+    rc::{Rc, Weak as RcWeak},
+    sync::{Arc, Mutex, RwLock, Weak as ArcWeak},
+};
 
 /// Primary key (document identifier)
 pub type Primary = u32;
@@ -90,7 +93,7 @@ impl<T: Document> Document for VecDeque<T> {
     }
 }
 
-impl<T: Document> Document for HashSet<T> {
+impl<T: Document, S: BuildHasher> Document for HashSet<T, S> {
     fn primary_field() -> Identifier {
         T::primary_field()
     }
@@ -100,7 +103,7 @@ impl<T: Document> Document for HashSet<T> {
     }
 }
 
-impl<K, T: Document> Document for HashMap<K, T> {
+impl<K, T: Document, S: BuildHasher> Document for HashMap<K, T, S> {
     fn primary_field() -> Identifier {
         T::primary_field()
     }

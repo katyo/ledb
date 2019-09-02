@@ -1,6 +1,6 @@
 [package]
 name = "ledb-types"
-version = "0.2.0"
+version = "0.3.0"
 authors = ["Kayo <kayo@illumium.org>"]
 license = "MIT"
 readme = "README.md"
@@ -15,10 +15,9 @@ travis-ci = { repository = "katyo/ledb" }
 appveyor = { repository = "katyo/ledb" }
 
 [dependencies]
-serde = "1"
-serde_derive = "1"
+serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", optional = true }
-serde_cbor = { version = "0.9", optional = true }
+serde_cbor = { version = "0.10", optional = true }
 bytes = { version = "0.4", optional = true }
 
 [features]

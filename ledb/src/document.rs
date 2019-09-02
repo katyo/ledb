@@ -1,10 +1,13 @@
-use std::ops::{Deref, DerefMut};
+use std::{
+    ops::{Deref, DerefMut},
+    convert::TryInto,
+};
 
 use serde::{de::DeserializeOwned, Serialize};
 use serde_cbor;
+pub use serde_cbor::{Value};
 
 use super::{Document, Primary, Result, ResultWrap};
-pub use serde_cbor::{ObjectKey, Value};
 
 /// Raw document with id representation
 #[derive(Debug, Clone, PartialEq)]
@@ -85,9 +88,9 @@ impl RawDocument {
     {
         let mut raw = to_value(doc)?;
 
-        let id = if let Value::Object(ref mut obj) = &mut raw {
+        let id = if let Value::Map(ref mut obj) = &mut raw {
             // split primary field value
-            obj.remove(&ObjectKey::String(T::primary_field().as_ref().into()))
+            obj.remove(&Value::Text(T::primary_field().as_ref().into()))
         } else {
             return Err("Document must be represented as an object").wrap_err();
         };
@@ -95,8 +98,7 @@ impl RawDocument {
         let id = match id {
             None => None,
             Some(Value::Null) => None,
-            Some(Value::U64(id)) => Some(id as u32),
-            Some(Value::I64(id)) => Some(id as u32),
+            Some(Value::Integer(id)) => Some(id as u32),
             _ => return Err("Document primary must be an integer").wrap_err(),
         };
 
@@ -112,18 +114,18 @@ impl RawDocument {
         T: DeserializeOwned + Document,
     {
         let RawDocument(id, mut raw) = self;
-        if let Value::Object(ref mut obj) = &mut raw {
+        if let Value::Map(ref mut obj) = &mut raw {
             if let Some(id) = &id {
                 obj.insert(
-                    ObjectKey::String(T::primary_field().as_ref().into()),
-                    Value::U64(u64::from(*id)),
+                    Value::Text(T::primary_field().as_ref().into()),
+                    Value::Integer(u64::from(*id).try_into().unwrap()),
                 );
             }
         } else {
             return Err("Document must be represented as an object").wrap_err();
         }
 
-        serde_cbor::from_value(raw).wrap_err()
+        serde_cbor::value::from_value(raw).wrap_err()
     }
 }
 
@@ -143,11 +145,12 @@ impl DerefMut for RawDocument {
 
 #[inline]
 pub fn to_value<T: Serialize>(value: T) -> Result<Value> {
-    serde_cbor::to_value(value).wrap_err()
+    serde_cbor::value::to_value(value).wrap_err()
 }
 
 #[cfg(test)]
 mod test {
+    use serde::{Serialize, Deserialize};
     use super::super::{Document, Identifier, Primary, RawDocument};
 
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

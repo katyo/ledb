@@ -1,5 +1,7 @@
-use std::collections::HashSet;
-use std::ops::{Not, BitAnd, BitOr};
+use std::{
+    collections::HashSet,
+    ops::{Not, BitAnd, BitOr},
+};
 
 use super::{Primary, Result};
 
@@ -98,7 +100,7 @@ mod test {
                    !Selection::default(),
                    Selection::from(&[1, 2, 3, 7, 9]));
     }
-    
+
     #[test]
     fn not_inv_and_not_inv() {
         assert_eq!(Selection::from(&[1, 2, 3, 7, 9]) &
@@ -112,7 +114,7 @@ mod test {
                    !Selection::from(&[2, 7, 5, 0, 4, 1]),
                    Selection::from(&[3, 9]));
     }
-    
+
     #[test]
     fn inv_and_not_inv() {
         assert_eq!(Selection::from(&[2, 7, 5, 0, 4, 1]) &

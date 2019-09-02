@@ -1,6 +1,8 @@
-use std::collections::HashMap;
-use std::path::{Path, PathBuf};
-use std::sync::{Arc, Once, RwLock, Weak, ONCE_INIT};
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+    sync::{Arc, Once, RwLock, Weak, ONCE_INIT},
+};
 
 use super::{Result, ResultWrap, StorageData};
 

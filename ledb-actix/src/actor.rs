@@ -403,6 +403,7 @@ impl<T: DeserializeOwned + Document + 'static> Handler<FindMsg<T>> for Storage {
 #[cfg(test)]
 mod tests {
     use std::fs::remove_dir_all;
+    use serde::{Serialize, Deserialize};
     use serde_json::{from_value};
     use futures::{Future};
     use tokio::{spawn};
@@ -428,19 +429,19 @@ mod tests {
     }
 
     static DB_PATH: &'static str = "test_db";
-    
+
     #[test]
     fn test() {
         System::run(|| {
             let _ = remove_dir_all(DB_PATH);
 
             let storage = Storage::new(DB_PATH, Options::default()).unwrap();
-            
+
             let addr = storage.start(3);
             let addr1 = addr.clone();
             let addr2 = addr.clone();
             let addr3 = addr.clone();
-            
+
             spawn(
                 addr.send(
                     Insert::<_, BlogPost>("blog", json_val!({
@@ -450,7 +451,7 @@ mod tests {
                     }))
                 ).and_then(move |res| {
                     assert_eq!(res.unwrap(), 1);
-                    
+
                     addr1.send(Insert::<_, BlogPost>("blog", json_val!({
                         "title": "Lorem ipsum",
                         "tags": ["lorem", "ipsum"],
@@ -462,7 +463,7 @@ mod tests {
                     addr3.send(EnsureIndex("blog", "tags", IndexKind::Index, KeyType::String))
                 }).and_then(move |res| {
                     assert!(res.is_ok());
-                    
+
                     addr2.send(Find::<_, BlogPost>("blog",
                                     json_val!({ "tags": { "$eq": "psychology" } }),
                                     json_val!("$asc")))
@@ -478,7 +479,7 @@ mod tests {
                     });
                     assert_eq!(&doc, &doc_data);
                     assert!(docs.next().is_none());
-                    
+
                     System::current().stop();
                 }).map_err(|_| ())
             );

@@ -1,7 +1,9 @@
-use std::collections::HashMap;
-use std::iter::once;
-use std::ops::Deref;
-use std::result::Result as StdResult;
+use std::{
+    collections::HashMap,
+    iter::once,
+    ops::Deref,
+    result::Result as StdResult,
+};
 
 use regex::Regex;
 use serde::{
@@ -9,7 +11,6 @@ use serde::{
     ser::{SerializeMap, Serializer},
     Deserialize, Serialize,
 };
-use serde_cbor::ObjectKey;
 
 use super::{Identifier, Value};
 
@@ -175,10 +176,9 @@ fn modify_value(mods: &HashMap<Identifier, Vec<Action>>, pfx: &str, mut val: Val
     }
 
     match val {
-        U64(_) => modify_primitive(mods, pfx, val),
-        I64(_) => modify_primitive(mods, pfx, val),
-        F64(_) => modify_primitive(mods, pfx, val),
-        String(_) => modify_primitive(mods, pfx, val),
+        Integer(_) => modify_primitive(mods, pfx, val),
+        Float(_) => modify_primitive(mods, pfx, val),
+        Text(_) => modify_primitive(mods, pfx, val),
         Bool(_) => modify_primitive(mods, pfx, val),
         Bytes(_) => modify_primitive(mods, pfx, val),
         Array(mut vec) => {
@@ -229,12 +229,12 @@ fn modify_value(mods: &HashMap<Identifier, Vec<Action>>, pfx: &str, mut val: Val
                     .collect(),
             )
         }
-        Object(mut map) => {
+        Map(mut map) => {
             if let Some(acts) = mods.get(pfx.into()) {
                 for act in acts {
                     use Action::*;
                     match act {
-                        Merge(Object(obj)) => {
+                        Merge(Map(obj)) => {
                             map.extend(obj.iter().map(|(k, v)| (k.clone(), v.clone())));
                         }
                         _ => (),
@@ -242,7 +242,7 @@ fn modify_value(mods: &HashMap<Identifier, Vec<Action>>, pfx: &str, mut val: Val
                 }
             }
 
-            Object(
+            Map(
                 map.into_iter()
                     .map(|(key, val)| {
                         let field = nested_field(pfx, &key);
@@ -250,7 +250,7 @@ fn modify_value(mods: &HashMap<Identifier, Vec<Action>>, pfx: &str, mut val: Val
                     }).collect(),
             )
         }
-        Null => Null,
+        other => other,
     }
 }
 
@@ -262,62 +262,34 @@ fn modify_primitive(mods: &HashMap<Identifier, Vec<Action>>, pfx: &str, mut val:
             use Action::*;
             val = match (&val, act) {
                 // add
-                (U64(pre), Add(U64(arg))) => U64(pre + arg),
-                (U64(pre), Add(I64(arg))) => I64(*pre as i64 + arg),
-                (U64(pre), Add(F64(arg))) => F64(*pre as f64 + arg),
+                (Integer(pre), Add(Integer(arg))) => Integer(pre + arg),
+                (Integer(pre), Add(Float(arg))) => Float(*pre as f64 + arg),
+                (Float(pre), Add(Integer(arg))) => Float(pre + *arg as f64),
+                (Float(pre), Add(Float(arg))) => Float(pre + arg),
 
-                (I64(pre), Add(U64(arg))) => I64(pre + *arg as i64),
-                (I64(pre), Add(I64(arg))) => I64(pre + arg),
-                (I64(pre), Add(F64(arg))) => F64(*pre as f64 + arg),
-
-                (F64(pre), Add(U64(arg))) => F64(pre + *arg as f64),
-                (F64(pre), Add(I64(arg))) => F64(pre + *arg as f64),
-                (F64(pre), Add(F64(arg))) => F64(pre + arg),
-
-                // substitute
-                (U64(pre), Sub(U64(arg))) => U64(pre - arg),
-                (U64(pre), Sub(I64(arg))) => I64(*pre as i64 - arg),
-                (U64(pre), Sub(F64(arg))) => F64(*pre as f64 - arg),
-
-                (I64(pre), Sub(U64(arg))) => I64(pre - *arg as i64),
-                (I64(pre), Sub(I64(arg))) => I64(pre - arg),
-                (I64(pre), Sub(F64(arg))) => F64(*pre as f64 - arg),
-
-                (F64(pre), Sub(U64(arg))) => F64(pre - *arg as f64),
-                (F64(pre), Sub(I64(arg))) => F64(pre - *arg as f64),
-                (F64(pre), Sub(F64(arg))) => F64(pre - arg),
+                // substract
+                (Integer(pre), Sub(Integer(arg))) => Integer(pre - arg),
+                (Integer(pre), Sub(Float(arg))) => Float(*pre as f64 - arg),
+                (Float(pre), Sub(Integer(arg))) => Float(pre - *arg as f64),
+                (Float(pre), Sub(Float(arg))) => Float(pre - arg),
 
                 // multiply
-                (U64(pre), Mul(U64(arg))) => U64(pre * arg),
-                (U64(pre), Mul(I64(arg))) => I64(*pre as i64 * arg),
-                (U64(pre), Mul(F64(arg))) => F64(*pre as f64 * arg),
-
-                (I64(pre), Mul(U64(arg))) => I64(pre * *arg as i64),
-                (I64(pre), Mul(I64(arg))) => I64(pre * arg),
-                (I64(pre), Mul(F64(arg))) => F64(*pre as f64 * arg),
-
-                (F64(pre), Mul(U64(arg))) => F64(pre * *arg as f64),
-                (F64(pre), Mul(I64(arg))) => F64(pre * *arg as f64),
-                (F64(pre), Mul(F64(arg))) => F64(pre * arg),
+                (Integer(pre), Mul(Integer(arg))) => Integer(pre * arg),
+                (Integer(pre), Mul(Float(arg))) => Float(*pre as f64 * arg),
+                (Float(pre), Mul(Integer(arg))) => Float(pre * *arg as f64),
+                (Float(pre), Mul(Float(arg))) => Float(pre * arg),
 
                 // divide
-                (U64(pre), Div(U64(arg))) => U64(pre / arg),
-                (U64(pre), Div(I64(arg))) => I64(*pre as i64 / arg),
-                (U64(pre), Div(F64(arg))) => F64(*pre as f64 / arg),
-
-                (I64(pre), Div(U64(arg))) => I64(pre / *arg as i64),
-                (I64(pre), Div(I64(arg))) => I64(pre / arg),
-                (I64(pre), Div(F64(arg))) => F64(*pre as f64 / arg),
-
-                (F64(pre), Div(U64(arg))) => F64(pre / *arg as f64),
-                (F64(pre), Div(I64(arg))) => F64(pre / *arg as f64),
-                (F64(pre), Div(F64(arg))) => F64(pre / arg),
+                (Integer(pre), Div(Integer(arg))) => Integer(pre / arg),
+                (Integer(pre), Div(Float(arg))) => Float(*pre as f64 / arg),
+                (Float(pre), Div(Integer(arg))) => Float(pre / *arg as f64),
+                (Float(pre), Div(Float(arg))) => Float(pre / arg),
 
                 // toggle
                 (Bool(pre), Toggle) => Bool(!pre),
 
                 // concat
-                (String(pre), Add(String(arg))) => String(pre.clone() + arg),
+                (Text(pre), Add(Text(arg))) => Text(pre.clone() + arg),
 
                 (Bytes(pre), Add(Bytes(arg))) => {
                     let mut vec = pre.clone();
@@ -326,8 +298,8 @@ fn modify_primitive(mods: &HashMap<Identifier, Vec<Action>>, pfx: &str, mut val:
                 }
 
                 // replace
-                (String(pre), Replace(regex, subst)) => {
-                    String(regex.replace_all(pre, subst.as_str()).into())
+                (Text(pre), Replace(regex, subst)) => {
+                    Text(regex.replace_all(pre, subst.as_str()).into())
                 }
 
                 _ => continue,
@@ -336,17 +308,15 @@ fn modify_primitive(mods: &HashMap<Identifier, Vec<Action>>, pfx: &str, mut val:
     }
 
     match val {
-        I64(v) if v > 0 => U64(v as u64),
-        F64(v) if (v as u64) as f64 == v => U64(v as u64),
-        F64(v) if (v as i64) as f64 == v => I64(v as i64),
+        Float(v) if (v as i64) as f64 == v => Integer(v as i128),
         _ => val,
     }
 }
 
-fn nested_field(pfx: &str, key: &ObjectKey) -> String {
-    use self::ObjectKey::*;
+fn nested_field(pfx: &str, key: &Value) -> String {
+    use self::Value::*;
     match key {
-        String(s) => pfx.to_owned() + if pfx.len() > 0 { "." } else { "" } + s,
+        Text(s) => pfx.to_owned() + if pfx.len() > 0 { "." } else { "" } + s,
         Integer(i) => pfx.to_owned() + "[" + &i.to_string() + "]",
         _ => pfx.into(),
     }
@@ -378,10 +348,7 @@ mod splice {
         let mut it = seq.into_iter();
         use Value::*;
         match (it.next(), it.next()) {
-            (Some(U64(off)), Some(U64(del))) => Ok((off as i32, del as i32, it.collect())),
-            (Some(I64(off)), Some(U64(del))) => Ok((off as i32, del as i32, it.collect())),
-            (Some(U64(off)), Some(I64(del))) => Ok((off as i32, del as i32, it.collect())),
-            (Some(I64(off)), Some(I64(del))) => Ok((off as i32, del as i32, it.collect())),
+            (Some(Integer(off)), Some(Integer(del))) => Ok((off as i32, del as i32, it.collect())),
             _ => Err(de::Error::custom("Invalid $slice op")),
         }
     }
@@ -390,7 +357,7 @@ mod splice {
 #[cfg(test)]
 mod test {
     use super::{Action, Modify};
-    use serde_json::{from_str, from_value, to_string, Value};
+    use serde_json::{from_str, value::from_value, to_string, Value, json};
 
     #[test]
     fn parse_field_set_single() {

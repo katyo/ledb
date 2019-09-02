@@ -1,9 +1,11 @@
-use ledb::{Collection, Filter, Identifier, IndexKind, KeyType, Modify, Order, Primary, Value};
-use neon::prelude::*;
-use neon_serde::{from_value, to_value};
 use std::u32;
 
-use super::{JsDocuments, JsStorage};
+use neon::prelude::*;
+use neon_serde::{from_value, to_value};
+
+use ledb::{Collection, Filter, Identifier, IndexKind, KeyType, Modify, Order, Primary, Value};
+
+use super::{JsDocuments, JsStorage, refine};
 
 declare_types! {
     /// A collection class
@@ -175,6 +177,8 @@ declare_types! {
                 let collection = this.borrow(&guard);
                 collection.get(id)
             });
+
+            let doc = doc.map(refine);
 
             Ok(js_try!(cx, to_value(&mut cx, &doc)).upcast())
         }

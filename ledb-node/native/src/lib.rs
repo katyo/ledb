@@ -10,6 +10,7 @@ mod helper;
 mod collection;
 mod documents;
 mod storage;
+mod refine;
 
 use collection::JsCollection;
 use documents::JsDocuments;
@@ -17,6 +18,7 @@ use ledb::Storage;
 use neon::prelude::*;
 use neon_serde::to_value;
 use storage::JsStorage;
+use refine::refine;
 
 fn list_openned_storages(mut cx: FunctionContext) -> JsResult<JsValue> {
     let list = js_try!(cx, Storage::openned());

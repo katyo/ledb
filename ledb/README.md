@@ -37,19 +37,7 @@ The abbreviation *LEDB* may be treated as an Lightweight Embedded DB, also Low E
 ## Usage example
 
 ```rust
-extern crate serde;
-#[macro_use]
-extern crate serde_derive;
-// This allows inserting JSON documents
-#[macro_use]
-extern crate serde_json;
-#[macro_use]
-extern crate ledb;
-// This allows define typed documents easy
-#[macro_use]
-extern crate ledb_derive;
-extern crate ledb_types;
-
+use serde::{Serialize, Deserialize};
 use ledb::{Options, Storage, IndexKind, KeyType, Filter, Comp, Order, OrderKind, Primary};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Document)]
@@ -57,7 +45,9 @@ struct MyDoc {
     #[document(primary)]
     id: Option<Primary>,
     title: String,
+    #[document(index)]
     tag: Vec<String>,
+    #[document(unique)]
     timestamp: u32,
 }
 
@@ -67,24 +57,24 @@ fn main() {
 
     // Open storage
     let storage = Storage::new(&db_path, Options::default()).unwrap();
-    
+
     // Get collection
     let collection = storage.collection("my-docs").unwrap();
-    
+
     // Ensure indexes
     query!(index for collection
         title str unique,
         tag str,
         timestamp int unique,
     ).unwrap();
-    
+
     // Insert JSON document
     let first_id = query!(insert into collection {
         "title": "First title",
         "tag": ["some tag", "other tag"],
         "timestamp": 1234567890,
     }).unwrap();
-    
+
     // Insert typed document
     let second_id = collection.insert(&MyDoc {
         title: "Second title".into(),
@@ -97,7 +87,7 @@ fn main() {
         find MyDoc in collection
         where title == "First title"
     ).unwrap().collect::<Result<Vec<_>, _>>().unwrap();
-    
+
     // Update documents
     let n_affected = query!(
         update in collection modify title = "Other title"

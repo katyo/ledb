@@ -1,3 +1,14 @@
+use std::{
+    collections::HashSet,
+    mem::replace,
+    ops::Deref,
+    sync::{
+        atomic::{AtomicBool, Ordering as AtomicOrdering},
+        Arc,
+    },
+};
+use float::F64;
+
 use lmdb::{
     put::{NODUPDATA, NOOVERWRITE},
     traits::CreateCursor,
@@ -5,19 +16,13 @@ use lmdb::{
     ReadTransaction, Unaligned, WriteAccessor,
 };
 use ron::ser::to_string as to_db_name;
-use serde_cbor::ObjectKey;
-use std::collections::HashSet;
-use std::mem::replace;
-use std::ops::Deref;
-use std::sync::atomic::{AtomicBool, Ordering as AtomicOrdering};
-use std::sync::Arc;
 use supercow::{ext::ConstDeref, Supercow};
+use serde::{Serialize, Deserialize};
 
 use super::{
     DatabaseDef, Enumerable, IndexKind, KeyData, KeyField, KeyType, OrderKind, Primary,
     RawDocument, Result, ResultWrap, Serial, Storage, Value,
 };
-use float::F64;
 
 /// The definition of index
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -425,10 +430,10 @@ fn extract_field_values<'a, 'i: 'a, I: Iterator<Item = &'i str> + Clone>(
             Array(val) => val
                 .iter()
                 .for_each(|doc| extract_field_values(doc, typ, path, keys)),
-            Object(val) if name == "*" => val
+            Map(val) if name == "*" => val
                 .iter()
                 .for_each(|(_key, doc)| extract_field_values(doc, typ, path, keys)),
-            Object(val) => if let Some(doc) = val.get(&name.to_owned().into()) {
+            Map(val) => if let Some(doc) = val.get(&name.to_owned().into()) {
                 extract_field_values(doc, typ, &sub_path, keys);
             },
             _ => (),
@@ -438,25 +443,15 @@ fn extract_field_values<'a, 'i: 'a, I: Iterator<Item = &'i str> + Clone>(
     }
 }
 
-fn key_to_val(key: &ObjectKey) -> Value {
-    match key {
-        ObjectKey::Integer(val) => Value::I64(*val),
-        ObjectKey::String(val) => Value::String(val.clone()),
-        ObjectKey::Bool(val) => Value::Bool(*val),
-        ObjectKey::Bytes(val) => Value::Bytes(val.clone()),
-        ObjectKey::Null => Value::Null,
-    }
-}
-
 fn extract_field_primitives(doc: &Value, typ: KeyType, keys: &mut HashSet<KeyData>) {
     use serde_cbor::Value::*;
     match (typ, doc) {
         (_, Array(val)) => val
             .iter()
             .for_each(|doc| extract_field_primitives(doc, typ, keys)),
-        (_, Object(val)) => val
+        (_, Map(val)) => val
             .iter()
-            .for_each(|(key, _doc)| extract_field_primitives(&key_to_val(key), typ, keys)),
+            .for_each(|(key, _doc)| extract_field_primitives(key, typ, keys)),
         (typ, val) => {
             if let Some(val) = KeyData::from_val(&val) {
                 if let Some(val) = val.into_type(typ) {

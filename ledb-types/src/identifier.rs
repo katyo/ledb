@@ -1,7 +1,11 @@
-use std::borrow::Borrow;
-use std::fmt::{Display, Formatter, Result as FmtResult};
-use std::hash::{Hash, Hasher};
-use std::ops::Deref;
+use std::{
+    borrow::Borrow,
+    fmt::{Display, Formatter, Result as FmtResult},
+    hash::{Hash, Hasher},
+    ops::Deref,
+};
+
+use serde::{Serialize, Deserialize};
 
 /// Generic string indentifier
 ///

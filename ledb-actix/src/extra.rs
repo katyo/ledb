@@ -18,7 +18,7 @@ pub trait StorageAddrExt<A> {
     fn send_query<M, T, E>(
         &self,
         msg: M,
-    ) -> Box<Future<Item = T, Error = Either<MailboxError, E>> + Send>
+    ) -> Box<dyn Future<Item = T, Error = Either<MailboxError, E>> + Send>
     where
         A: Handler<M> + Send,
         A::Context: ToEnvelope<A, M>,

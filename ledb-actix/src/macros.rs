@@ -1,12 +1,12 @@
 /// Unified query message macro
 ///
-#[macro_export]
+#[macro_export(local_inner_macros)]
 macro_rules! query {
     // call util
-    (@$util:ident $($args:tt)*) => ( _query_impl!(@$util $($args)*) );
+    (@$util:ident $($args:tt)*) => ( ::ledb::_query_impl!(@$util $($args)*) );
 
     // make query
-    ($($tokens:tt)+) => ( _query_impl!(@query _query_actix, $($tokens)+) );
+    ($($tokens:tt)+) => ( ::ledb::_query_impl!(@query _query_actix, $($tokens)+) );
 }
 
 // native API output macros
@@ -14,29 +14,29 @@ macro_rules! query {
 #[doc(hidden)]
 macro_rules! _query_actix {
     (@index $coll:expr, [ $($indexes:tt),+ ]) => (
-        $crate::SetIndexes(_query_impl!(@stringify $coll), _query_impl![@vec $($indexes),+])
+        $crate::SetIndexes(::ledb::_query_impl!(@stringify $coll), ::ledb::_query_impl![@vec $($indexes),+])
     );
     (@index $coll:expr, $($indexes:tt)+) => (
-        $crate::SetIndexes(_query_impl!(@stringify $coll), $($indexes)+)
+        $crate::SetIndexes(::ledb::_query_impl!(@stringify $coll), $($indexes)+)
     );
     (@find $type:tt, $coll:expr, $filter:expr, $order:expr) => (
-        $crate::Find::<_, $type>(_query_impl!(@stringify $coll), $filter, $order)
+        $crate::Find::<_, $type>(::ledb::_query_impl!(@stringify $coll), $filter, $order)
     );
     (@insert $coll:expr, $doc:expr) => (
-        $crate::Insert(_query_impl!(@stringify $coll), $doc)
+        $crate::Insert(::ledb::_query_impl!(@stringify $coll), $doc)
     );
     (@update $coll:expr, $filter:expr, $modify:expr) => (
-        $crate::Update(_query_impl!(@stringify $coll), $filter, $modify)
+        $crate::Update(::ledb::_query_impl!(@stringify $coll), $filter, $modify)
     );
     (@remove $coll:expr, $filter:expr) => (
-        $crate::Remove(_query_impl!(@stringify $coll), $filter)
+        $crate::Remove(::ledb::_query_impl!(@stringify $coll), $filter)
     );
 }
 
 #[cfg(test)]
 mod test {
     use actor::*;
-    use ledb::Value;
+    use ledb::{Value, query_extr};
 
     #[test]
     fn find() {

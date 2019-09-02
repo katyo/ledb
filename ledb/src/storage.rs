@@ -1,3 +1,12 @@
+use std::{
+    collections::HashMap,
+    env::current_dir,
+    fs::create_dir_all,
+    ops::Deref,
+    path::{Path, PathBuf},
+    sync::{Arc, RwLock},
+};
+
 use dirs::home_dir;
 use dunce::canonicalize;
 use lmdb::{
@@ -5,12 +14,7 @@ use lmdb::{
     DatabaseOptions, EnvBuilder, Environment, MaybeOwned, ReadTransaction,
 };
 use ron::de::from_str as from_db_name;
-use std::collections::HashMap;
-use std::env::current_dir;
-use std::fs::create_dir_all;
-use std::ops::Deref;
-use std::path::{Path, PathBuf};
-use std::sync::{Arc, RwLock};
+use serde::{Serialize, Deserialize};
 use supercow::{ext::ConstDeref, NonSyncSupercow, Supercow};
 
 use super::{

@@ -17,20 +17,13 @@
 ## Usage example
 
 ```rust
-extern crate serde;
-#[macro_use]
-extern crate serde_derive;
-// This allows inserting JSON documents
-#[macro_use]
-extern crate serde_json;
-#[macro_use]
-extern crate ledb;
-// This allows define typed documents easy
-#[macro_use]
-extern crate ledb_derive;
-extern crate ledb_types;
-
-use ledb::{Storage, Options, IndexKind, KeyType, Filter, Comp, Order, OrderKind, Identifier, Primary, Document};
+# extern crate ledb;
+# extern crate serde;
+# extern crate serde_json;
+#
+use serde::{Serialize, Deserialize};
+use serde_json::json;
+use ledb::{Storage, Options, IndexKind, KeyType, Filter, Comp, Order, OrderKind, Identifier, Primary, Document, query, query_extr};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Document)]
 struct MyDoc {
@@ -52,10 +45,10 @@ fn main() {
 
     // Open storage
     let storage = Storage::new(&db_path, Options::default()).unwrap();
-    
+
     // Get collection
     let collection = storage.collection("my-docs").unwrap();
-    
+
     // Ensure indexes
     query!(index for collection
         title str unique,
@@ -65,14 +58,14 @@ fn main() {
 
     // Ensure indexes using document type
     query!(index MyDoc for collection).unwrap();
-    
+
     // Insert JSON document
     let first_id = query!(insert into collection {
         "title": "First title",
         "tag": ["some tag", "other tag"],
         "timestamp": 1234567890,
     }).unwrap();
-    
+
     // Insert typed document
     let second_id = collection.insert(&MyDoc {
         id: None,
@@ -86,7 +79,7 @@ fn main() {
         find MyDoc in collection
         where title == "First title"
     ).unwrap().collect::<Result<Vec<_>, _>>().unwrap();
-    
+
     // Update documents
     let n_affected = query!(
         update in collection modify title = "Other title"
@@ -312,7 +305,7 @@ query!(@modify field = 123)
 query!(@modify other.field = "abc")
 
 // set multiple fields
-query!(@modify 
+query!(@modify
     field = 1;
     other.field = "abc";
 )
@@ -349,8 +342,6 @@ query!(@modify obj ~= extra)
 extern crate byteorder;
 extern crate ordered_float;
 extern crate serde;
-#[macro_use]
-extern crate serde_derive;
 extern crate lmdb_zero as lmdb;
 extern crate regex;
 extern crate ron;
@@ -358,15 +349,15 @@ extern crate serde_cbor;
 extern crate supercow;
 
 #[cfg(test)]
-#[macro_use]
 extern crate serde_json;
 
 extern crate dirs;
 extern crate dunce;
 
-extern crate ledb_types;
+pub extern crate ledb_types;
 
-#[cfg(test)]
+#[cfg(any(feature = "ledb-derive"))]
+#[allow(unused_imports)]
 #[macro_use]
 extern crate ledb_derive;
 
@@ -392,6 +383,10 @@ mod macros;
 
 pub use ledb_types::{Document, Identifier, IndexKind, KeyField, KeyFields, KeyType, Primary};
 
+#[cfg(any(feature = "ledb-derive"))]
+#[doc(hidden)]
+pub use ledb_derive::*;
+
 pub use collection::{Collection, DocumentsIterator};
 pub use document::{to_value, RawDocument, Value};
 pub use error::{Error, Result, ResultWrap};
@@ -399,6 +394,7 @@ pub use filter::{Comp, Cond, Filter, Order, OrderKind};
 pub use modify::{Action, Modify, WrappedRegex};
 pub use storage::{Info, Options, Stats, Storage};
 pub use value::KeyData;
+pub use macros::*;
 
 use collection::CollectionDef;
 use enumerate::{Enumerable, Serial, SerialGenerator};
@@ -409,16 +405,18 @@ use storage::{DatabaseDef, StorageData};
 
 #[cfg(test)]
 mod tests {
+    use serde::{Serialize, Deserialize};
+    use serde_json::json;
+
     use super::{
         Collection, Document, Identifier, IndexKind, KeyFields, KeyType, Primary, Result, Value,
     };
-    use serde_cbor::ObjectKey;
     use test::test_db;
 
     fn get_id(val: Value) -> Option<Primary> {
-        if let Value::Object(map) = val {
-            map.get(&ObjectKey::String("$".into())).and_then(|val| {
-                if let Value::U64(id) = val {
+        if let Value::Map(map) = val {
+            map.get(&Value::Text("$".into())).and_then(|val| {
+                if let Value::Integer(id) = val {
                     Some(*id as u32)
                 } else {
                     None

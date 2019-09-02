@@ -1,4 +1,6 @@
 use std::iter::once;
+
+use serde::{Serialize, Deserialize};
 use lmdb::{ReadTransaction};
 
 use super::{Identifier, Result, KeyData, Selection, Collection};
@@ -65,7 +67,7 @@ impl Filter {
     pub fn comp<F: Into<Identifier>>(field: F, comp: Comp) -> Self {
         Filter::Comp(field.into(), comp)
     }
-    
+
     pub(crate) fn apply(&self, txn: &ReadTransaction<'static>, coll: &Collection) -> Result<Selection> {
         match self {
             Filter::Cond(cond) => {
@@ -155,13 +157,13 @@ mod comp {
     use super::{Identifier, Comp};
     use std::collections::HashMap;
     use serde::{Serializer, Deserializer, Deserialize, de::{self}, ser::{SerializeMap}};
-    
+
     pub fn serialize<S: Serializer>(field: &Identifier, op: &Comp, serializer: S) -> Result<S::Ok, S::Error> {
         let mut map = serializer.serialize_map(Some(1))?;
         map.serialize_entry(&field, &op)?;
         map.end()
     }
-    
+
     pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<(Identifier, Comp), D::Error> {
         let map: HashMap<String, Comp> = HashMap::deserialize(deserializer)?;
         let mut it = map.into_iter();
@@ -176,13 +178,13 @@ mod order {
     use super::{Identifier, OrderKind};
     use std::collections::HashMap;
     use serde::{Serializer, Deserializer, Deserialize, de::{self}, ser::{SerializeMap}};
-    
+
     pub fn serialize<S: Serializer>(field: &Identifier, op: &OrderKind, serializer: S) -> Result<S::Ok, S::Error> {
         let mut map = serializer.serialize_map(Some(1))?;
         map.serialize_entry(&field, &op)?;
         map.end()
     }
-    
+
     pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<(Identifier, OrderKind), D::Error> {
         let map: HashMap<String, OrderKind> = HashMap::deserialize(deserializer)?;
         let mut it = map.into_iter();
@@ -196,7 +198,7 @@ mod order {
 #[cfg(test)]
 mod test {
     use super::{Filter, Comp, Cond, KeyData, Order, OrderKind};
-    use serde_json::{from_str, to_string, Value};
+    use serde_json::{from_str, to_string, Value, json};
 
     #[test]
     fn parse_comp_eq() {

@@ -1,8 +1,12 @@
+use std::{
+    borrow::Cow,
+    mem::transmute,
+    str::from_utf8,
+};
+
 use byteorder::{ByteOrder, NativeEndian};
 use ordered_float::OrderedFloat;
-use std::borrow::Cow;
-use std::mem::transmute;
-use std::str::from_utf8;
+use serde::{Serialize, Deserialize};
 
 use super::{KeyType, Result, ResultWrap, Value};
 
@@ -88,11 +92,10 @@ impl KeyData {
     pub fn from_val(val: &Value) -> Option<Self> {
         use serde_cbor::Value::*;
         Some(match val {
-            U64(val) => KeyData::Int(*val as i64),
-            I64(val) => KeyData::Int(*val),
-            F64(val) => KeyData::Float(OrderedFloat(*val)),
+            Integer(val) => KeyData::Int(*val as i64),
+            Float(val) => KeyData::Float(OrderedFloat(*val)),
             Bytes(val) => KeyData::Binary(val.clone()),
-            String(val) => KeyData::String(val.clone()),
+            Text(val) => KeyData::String(val.clone()),
             Bool(val) => KeyData::Bool(*val),
             _ => return None,
         })

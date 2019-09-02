@@ -11,33 +11,27 @@ An implementation of storage actor for [Actix](https://actix.rs/).
 Usage example:
 
 ```
-extern crate actix;
-extern crate futures;
-extern crate tokio;
-#[macro_use]
-extern crate serde_derive;
-// This allows inserting JSON documents
-#[macro_use]
-extern crate serde_json;
-#[macro_use]
-extern crate ledb;
-#[macro_use]
-extern crate ledb_actix;
+# extern crate actix;
+# extern crate futures;
+# extern crate tokio;
+# extern crate serde;
+# // This allows inserting JSON documents
+# extern crate serde_json;
+# extern crate ledb;
+# extern crate ledb_actix;
 // This allows define typed documents easy
-#[macro_use]
-extern crate ledb_derive;
-extern crate ledb_types;
-
-#[macro_use]
-extern crate log;
-extern crate pretty_env_logger;
-
+# extern crate ledb_types;
+# extern crate log;
+# extern crate pretty_env_logger;
+#
+use serde::{Serialize, Deserialize};
 use actix::System;
 use futures::Future;
-use ledb_actix::{Storage, Options, StorageAddrExt, Primary, Identifier, Document};
-use serde_json::from_value;
+use ledb_actix::{Storage, Options, StorageAddrExt, Primary, Identifier, Document, query, query_extr};
+use serde_json::{from_value, json};
 use std::env;
 use tokio::spawn;
+use log::{info, error};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Document)]
 struct BlogPost {
@@ -50,7 +44,7 @@ struct BlogPost {
 
 fn main() {
     env::set_var("RUST_LOG", "info");
-    pretty_env_logger::init().unwrap();
+    pretty_env_logger::init();
 
     let _ = std::fs::remove_dir_all("example_db");
 
@@ -67,7 +61,7 @@ fn main() {
             )).and_then({ let addr = addr.clone(); move |id| {
                 info!("Inserted document id: {}", id);
                 assert_eq!(id, 1);
-                
+
                 addr.send_query(query!(
                     insert into blog {
                         "title": "Lorem ipsum",
@@ -84,7 +78,7 @@ fn main() {
                 ))
             } }).and_then({ let addr = addr.clone(); move |_| {
                 info!("Indexing is ok");
-                
+
                 addr.send_query(query!(
                     find BlogPost in blog
                     where tags == "psychology"
@@ -92,29 +86,29 @@ fn main() {
                 ))
             } }).map(|mut docs| {
                 info!("Number of found documents: {}", docs.size_hint().0);
-                
+
                 assert_eq!(docs.size_hint(), (1, Some(1)));
-                
+
                 let doc = docs.next().unwrap().unwrap();
 
                 info!("Found document: {:?}", doc);
-                
+
                 let doc_data: BlogPost = from_value(json!({
                     "id": 1,
                     "title": "Absurd",
                     "tags": ["absurd", "psychology"],
                     "content": "Still nothing..."
                 })).unwrap();
-                
+
                 assert_eq!(&doc, &doc_data);
                 assert!(docs.next().is_none());
-                
+
                 System::current().stop();
             }).map_err(|err| {
                 error!("Error: {:?}", err);
             })
         );
-    });
+    }).unwrap();
 }
 ```
 
@@ -208,8 +202,6 @@ __DELETE__ /collection/_$collection_name_/_$document_id_
 
 extern crate actix;
 
-#[allow(unused_imports)]
-#[macro_use(_query_impl, _query_extr)]
 extern crate ledb;
 
 extern crate serde;
@@ -218,10 +210,6 @@ extern crate futures;
 
 #[cfg(test)]
 extern crate tokio;
-
-#[cfg(any(test, feature = "web"))]
-#[macro_use]
-extern crate serde_derive;
 
 #[cfg(test)]
 #[macro_use]
@@ -242,6 +230,7 @@ mod scope;
 pub use ledb::{
     Action, Comp, Cond, Document, DocumentsIterator, Filter, Identifier, IndexKind, Info, KeyData,
     KeyField, KeyFields, KeyType, Modify, Options, Order, OrderKind, Primary, Stats, Value,
+    query_extr,
 };
 
 pub use actor::*;

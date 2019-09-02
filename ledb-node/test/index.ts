@@ -6,7 +6,7 @@ removeSync("test_db");
 
 describe('storage', () => {
     const storage = new Storage("test_db/storage");
-    
+
     it('get_info', () => {
         const info = storage.get_info();
 
@@ -28,7 +28,7 @@ describe('collection', () => {
     it('create', () => {
         dse(storage.has_collection("post"), false);
         dse(storage.get_collections(), []);
-        
+
         const coll = storage.collection("post");
 
         dse(coll.constructor, Collection);
@@ -44,7 +44,7 @@ describe('collection', () => {
         dse(coll.get(1), null);
         dse(coll.get(2), null);
 
-        const doc1 = {title: "Foo", tag: ["Bar", "Baz"], timestamp: 1234567890};
+        const doc1 = { title: "Foo", tag: ["Bar", "Baz"], timestamp: 1234567890 };
         const id1 = coll.insert(doc1);
 
         dse(id1, 1);
@@ -53,7 +53,7 @@ describe('collection', () => {
         dse(coll.get(1), { $: 1, ...doc1 });
         dse(coll.get(2), null);
 
-        const doc2 = {title: "Bar", tag: ["Foo", "Baz"], timestamp: 1234567899};
+        const doc2 = { title: "Bar", tag: ["Foo", "Baz"], timestamp: 1234567899 };
         const id2 = coll.insert(doc2);
 
         dse(id2, 2);
@@ -62,12 +62,12 @@ describe('collection', () => {
         dse(coll.get(1), { $: 1, ...doc1 });
         dse(coll.get(2), { $: 2, ...doc2 });
 
-        const doc3 = {title: "Baz", tag: ["Bar", "Foo"], timestamp: 1234567819};
+        const doc3 = { title: "Baz", tag: ["Bar", "Foo"], timestamp: 1234567819 };
         const id3 = coll.insert(doc3);
 
         dse(id3, 3);
 
-        const doc4 = {title: "Act", tag: ["Foo", "Eff"], timestamp: 1234567819};
+        const doc4 = { title: "Act", tag: ["Foo", "Eff"], timestamp: 1234567819 };
         const id4 = coll.insert(doc4);
 
         dse(id4, 4);
@@ -75,46 +75,46 @@ describe('collection', () => {
 
     it('ensure_index', () => {
         const coll = storage.collection("post");
-        
+
         dse(coll.has_index("title"), false);
         dse(coll.has_index("tag"), false);
         dse(coll.has_index("timestamp"), false);
         dse(coll.get_indexes(), []);
 
         dse(coll.ensure_index("title", "unique", "string"), true);
-        
+
         dse(coll.has_index("title"), true);
         dse(coll.has_index("tag"), false);
         dse(coll.has_index("timestamp"), false);
-        dse(coll.get_indexes(), [{path: "title", kind: "unique", key: "string"}] as KeyFields);
-        
+        dse(coll.get_indexes(), [{ path: "title", kind: "unique", key: "string" }] as KeyFields);
+
         dse(coll.ensure_index("tag", "index", "string"), true);
-        
+
         dse(coll.has_index("title"), true);
         dse(coll.has_index("tag"), true);
         dse(coll.has_index("timestamp"), false);
-        dse(coll.get_indexes(), [{path: "title", kind: "unique", key: "string"},
-                                 {path: "tag", kind: "index", key: "string"}] as KeyFields);
+        dse(coll.get_indexes(), [{ path: "title", kind: "unique", key: "string" },
+        { path: "tag", kind: "index", key: "string" }] as KeyFields);
 
         dse(coll.ensure_index("timestamp", "index", "int"), true);
-        
+
         dse(coll.has_index("title"), true);
         dse(coll.has_index("tag"), true);
         dse(coll.has_index("timestamp"), true);
-        dse(coll.get_indexes(), [{path: "title", kind: "unique", key: "string"},
-                                 {path: "tag", kind: "index", key: "string"},
-                                 {path: "timestamp", kind: "index", key: "int"}] as KeyFields);
+        dse(coll.get_indexes(), [{ path: "title", kind: "unique", key: "string" },
+        { path: "tag", kind: "index", key: "string" },
+        { path: "timestamp", kind: "index", key: "int" }] as KeyFields);
     });
 
     it('find', () => {
         const coll = storage.collection("post");
 
         dse(coll.find(null).count(), 4);
-        dse(coll.find({title:{$eq:"Foo"}}).count(), 1);
-        dse(coll.find({tag:{$eq:"Baz"}}).count(), 2);
-        dse(coll.find({tag:{$eq:"Foo"}}).count(), 3);
-        dse(coll.find({$or:[{title:{$eq:"Foo"}},{title:{$eq:"Bar"}}]}).count(), 2);
-        dse(coll.find({$not:{title:{$eq:"Foo"}}}).count(), 3);
+        dse(coll.find({ title: { $eq: "Foo" } }).count(), 1);
+        dse(coll.find({ tag: { $eq: "Baz" } }).count(), 2);
+        dse(coll.find({ tag: { $eq: "Foo" } }).count(), 3);
+        dse(coll.find({ $or: [{ title: { $eq: "Foo" } }, { title: { $eq: "Bar" } }] }).count(), 2);
+        dse(coll.find({ $not: { title: { $eq: "Foo" } } }).count(), 3);
     });
 
     // TODO: more tests
@@ -122,19 +122,19 @@ describe('collection', () => {
 
 describe('documents', () => {
     const storage = new Storage("test_db/collection");
-    
+
     it('next', () => {
         const coll = storage.collection("post");
         let docs = coll.find(null);
-        
+
         dse(docs.count(), 4);
-        dse(docs.next(), {$: 1, title: "Foo", tag: ["Bar", "Baz"], timestamp: 1234567890});
-        dse(docs.next(), {$: 2, title: "Bar", tag: ["Foo", "Baz"], timestamp: 1234567899});
-        dse(docs.next(), {$: 3, title: "Baz", tag: ["Bar", "Foo"], timestamp: 1234567819});
-        dse(docs.next(), {$: 4, title: "Act", tag: ["Foo", "Eff"], timestamp: 1234567819});
+        dse(docs.next(), { $: 1, title: "Foo", tag: ["Bar", "Baz"], timestamp: 1234567890 });
+        dse(docs.next(), { $: 2, title: "Bar", tag: ["Foo", "Baz"], timestamp: 1234567899 });
+        dse(docs.next(), { $: 3, title: "Baz", tag: ["Bar", "Foo"], timestamp: 1234567819 });
+        dse(docs.next(), { $: 4, title: "Act", tag: ["Foo", "Eff"], timestamp: 1234567819 });
         dse(docs.next(), null);
     });
-    
+
     it('skip', () => {
         const coll = storage.collection("post");
 

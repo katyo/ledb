@@ -1,10 +1,13 @@
-use ledb::{Result, Value};
+use std::{mem::replace, usize};
+
 use neon::prelude::*;
 use neon_serde::to_value;
-use std::mem::replace;
-use std::usize;
 
-pub struct Documents(pub(crate) Option<Box<Iterator<Item = Result<Value>>>>);
+use ledb::{Result, Value};
+
+use super::{refine};
+
+pub struct Documents(pub(crate) Option<Box<dyn Iterator<Item = Result<Value>>>>);
 
 static INVALID_RANGE: &'static str = "Argument not in range 0..N";
 static INVALID_ITERATOR: &'static str = "Invalid documents iterator";
@@ -104,6 +107,8 @@ declare_types! {
                 }
             });
 
+            let doc = doc.map(refine);
+
             Ok(js_try!(cx, to_value(&mut cx, &doc)).upcast())
         }
 
@@ -120,6 +125,8 @@ declare_types! {
                     Err(INVALID_ITERATOR.into())
                 }
             });
+
+            let docs = docs.into_iter().map(refine).collect::<Vec<_>>();
 
             Ok(js_try!(cx, to_value(&mut cx, &docs)).upcast())
         }

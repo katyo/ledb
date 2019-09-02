@@ -24,10 +24,7 @@ The abbreviation *LEDB* may be treated as an Lightweight Embedded DB, also Low E
 ## Usage example
 
 ```rust
-extern crate serde;
-#[macro_use] extern crate serde_derive;
-extern crate ledb_types;
-
+use serde::{Serialize, Deserialize};
 use ledb_types::{Document, Identifier, Primary, KeyFields, KeyType, IndexKind};
 
 #[derive(Serialize, Deserialize)]

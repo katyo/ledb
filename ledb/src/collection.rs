@@ -1,16 +1,21 @@
+use std::{
+    cmp::Ordering,
+    collections::HashSet,
+    marker::PhantomData,
+    mem::replace,
+    ops::Deref,
+    sync::{
+        atomic::{AtomicBool, Ordering as AtomicOrdering},
+        Arc, RwLock,
+    },
+};
+
 use lmdb::{
     put::Flags as PutFlags, traits::CreateCursor, Cursor, CursorIter, Database, DatabaseOptions,
     LmdbResultExt, MaybeOwned, ReadTransaction, Unaligned, WriteTransaction,
 };
 use ron::ser::to_string as to_db_name;
-use serde::{de::DeserializeOwned, Serialize};
-use std::cmp::Ordering;
-use std::collections::HashSet;
-use std::marker::PhantomData;
-use std::mem::replace;
-use std::ops::Deref;
-use std::sync::atomic::{AtomicBool, Ordering as AtomicOrdering};
-use std::sync::{Arc, RwLock};
+use serde::{de::DeserializeOwned, Serialize, Deserialize};
 use supercow::{ext::ConstDeref, Supercow};
 
 use super::{
@@ -430,8 +435,14 @@ impl Collection {
 
         let old_doc = {
             let mut access = txn.access();
+
             let old_doc =
-                RawDocument::from_bin(access.get(&handle.db, &Unaligned::new(id))?)?.with_id(id);
+                if let Some(old_doc) = access.get(&handle.db, &Unaligned::new(id)).to_opt()? {
+                    RawDocument::from_bin(old_doc)?.with_id(id)
+                } else {
+                    // document not exists
+                    return Ok(false)
+                };
 
             access.del_key(&handle.db, &Unaligned::new(id)).wrap_err()?;
 
@@ -770,7 +781,7 @@ impl Iterator for PrimaryIterator {
 pub struct DocumentsIterator<T> {
     storage: Storage,
     coll: Collection,
-    ids_iter: Box<Iterator<Item = Primary> + Send>,
+    ids_iter: Box<dyn Iterator<Item = Primary> + Send>,
     phantom_doc: PhantomData<T>,
 }
 

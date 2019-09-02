@@ -1,8 +1,9 @@
 /// Unified query macro
 ///
 /// ```ignore
-/// #[macro_use] extern crate serde_derive;
-/// #[macro_use] extern crate ledb;
+/// # extern crate serde;
+/// # extern crate ledb;
+/// use serde::{Serialize, Deserialize};
 /// use ledb::*;
 ///
 /// #[derive(Serialize, Deserialize)]
@@ -49,7 +50,7 @@
 ///     );
 /// }
 /// ```
-#[macro_export]
+#[macro_export(local_inner_macros)]
 macro_rules! query {
     // call util
     (@$util:ident $($args:tt)*) => ( _query_impl!(@$util $($args)*) );
@@ -71,12 +72,12 @@ macro_rules! _query_native {
 }
 
 // query DSL implementation
-#[macro_export]
+#[macro_export(local_inner_macros)]
 #[doc(hidden)]
 macro_rules! _query_impl {
     // ensure index with document type
     (@query $out:ident, index $type:tt for $coll:tt) => ( _query_impl!(@index_document ($out, $type, $coll)) );
-    
+
     // ensure index
     (@query $out:ident, index for $coll:tt $($tokens:tt)+) => ( _query_impl!(@index ($out, $coll), $($tokens)+) );
 
@@ -621,20 +622,20 @@ macro_rules! _query_impl {
         _query_impl!(@vec $(_query_impl!(@stringify $x)),+)
     );
 
-    (@call $cb:ident, $($args:tt)*) => ( _query_extr!(@call $cb, $($args)*) );
+    (@call $cb:ident, $($args:tt)*) => ( query_extr!(@call $cb, $($args)*) );
 
-    (@vec $($content:tt)*) => ( _query_extr!(@vec $($content)*) );
-    
-    (@stringify $($content:tt)*) => ( _query_extr!(@stringify $($content)*) );
-    
-    (@concat $($content:tt)*) => ( _query_extr!(@concat $($content)*) );
+    (@vec $($content:tt)*) => ( query_extr!(@vec $($content)*) );
 
-    (@json $($content:tt)*) => ( _query_extr!(@json $($content)*) );
+    (@stringify $($content:tt)*) => ( query_extr!(@stringify $($content)*) );
+
+    (@concat $($content:tt)*) => ( query_extr!(@concat $($content)*) );
+
+    (@json $($content:tt)*) => ( query_extr!(@json $($content)*) );
 }
 
 #[macro_export]
 #[doc(hidden)]
-macro_rules! _query_extr {
+macro_rules! query_extr {
     (@call $cb:ident, $($args:tt)*) => ( $cb!($($args)*) );
     (@vec $($content:tt)*) => ( vec! [ $($content)* ] );
     (@stringify $($content:tt)*) => ( stringify! { $($content)* } );
@@ -910,7 +911,7 @@ mod test {
     }
 
     mod modify {
-        use serde_json::from_value;
+        use serde_json::{from_value, json};
 
         #[test]
         fn empty() {
@@ -925,7 +926,7 @@ mod test {
                 json_val!({ "a": { "$set": 123 }, "b.c": { "$set": "abc" } })
             );
             assert_eq!(
-                query!(@modify 
+                query!(@modify
                 a = 123u32;
                 b.c = "abc";
             ),
@@ -1054,6 +1055,8 @@ mod test {
 
         #[test]
         fn merge() {
+            use serde::{Serialize, Deserialize};
+
             #[derive(Serialize, Deserialize)]
             struct Extra {
                 subfield: bool,

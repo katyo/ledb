@@ -1,6 +1,6 @@
 [package]
 name = "ledb-derive"
-version = "0.2.1"
+version = "0.3.0"
 authors = ["Kayo <kayo@illumium.org>"]
 license = "MIT"
 readme = "README.md"
@@ -18,6 +18,12 @@ appveyor = { repository = "katyo/ledb" }
 proc-macro = true
 
 [dependencies]
-proc-macro2 = "0.4"
-syn = { version = "0.15", features = ["derive"] }
-quote = "0.6"
+proc-macro2 = "1.0"
+quote = "1.0"
+syn = "1.0"
+
+[dev-dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_bytes = "0.11"
+ledb-types = { version = "0.3", path = "../ledb-types" }
+ledb = { version = "0.3", path = "../ledb" }

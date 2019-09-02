@@ -24,13 +24,8 @@ The abbreviation *LEDB* may be treated as an Lightweight Embedded DB, also Low E
 ## Usage example
 
 ```rust
-extern crate serde;
-#[macro_use]
-extern crate serde_derive;
-
-extern crate ledb_types;
-#[macro_use]
-extern crate ledb_derive;
+use serde::{Serialize, Deserialize};
+use ledb::{Document};
 
 #[derive(Serialize, Deserialize, Document)]
 struct MyDoc {
@@ -69,7 +64,7 @@ impl Document for MyDoc {
     fn primary_field() -> Identifier {
         "id".into()
     }
-    
+
     // declare other key fields for index
     fn key_fields() -> KeyFields {
         KeyFields::new()

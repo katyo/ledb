@@ -7,10 +7,10 @@
 The basic trait which should be implemented for structs which designed to be handled as documents.
 
 ```rust
-extern crate serde;
-#[macro_use] extern crate serde_derive;
-extern crate ledb_types;
-
+# extern crate serde;
+# extern crate ledb_types;
+#
+use serde::{Serialize, Deserialize};
 use ledb_types::{Document, Identifier, Primary, KeyFields, KeyType, IndexKind};
 
 #[derive(Serialize, Deserialize)]
@@ -68,9 +68,6 @@ This trait maps rust types to key types.
 */
 
 extern crate serde;
-
-#[macro_use]
-extern crate serde_derive;
 
 #[cfg(feature = "json")]
 extern crate serde_json;

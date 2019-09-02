@@ -1,7 +1,9 @@
-use super::JsCollection;
-use ledb::{Options, Storage};
 use neon::prelude::*;
 use neon_serde::{from_value, to_value};
+
+use ledb::{Options, Storage};
+
+use super::JsCollection;
 
 declare_types! {
     /// A storage class

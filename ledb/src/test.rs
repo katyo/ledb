@@ -1,18 +1,13 @@
-use super::{Options, Result, Storage};
-use std::fs::remove_dir_all;
-use std::path::Path;
+use std::{
+    fs::remove_dir_all,
+    path::Path,
+};
 
-/*
-macro_rules! json_str {
-    ($($json:tt)+) => {
-        to_string(&json!($($json)+)).unwrap()
-    };
-}
-*/
+use super::{Options, Result, Storage};
 
 macro_rules! json_val {
     ($($json:tt)+) => {
-        from_value(json!($($json)+)).unwrap()
+        from_value(serde_json::json!($($json)+)).unwrap()
     };
 }
 

@@ -1,8 +1,11 @@
-use std::fmt::{self, Display};
-use std::str::Utf8Error;
-use std::io::Error as IoError;
-use std::sync::PoisonError;
-use std::result::Result as StdResult;
+use std::{
+    fmt::{self, Display},
+    str::Utf8Error,
+    io::Error as IoError,
+    sync::PoisonError,
+    result::Result as StdResult,
+};
+
 use serde_cbor::error::Error as CborError;
 use ron::{ser::Error as RonEncError, de::Error as RonDecError};
 use lmdb::error::Error as DbError;
