@@ -9,8 +9,8 @@ use super::{refine};
 
 pub struct Documents(pub(crate) Option<Box<dyn Iterator<Item = Result<Value>>>>);
 
-static INVALID_RANGE: &'static str = "Argument not in range 0..N";
-static INVALID_ITERATOR: &'static str = "Invalid documents iterator";
+static INVALID_RANGE: &str = "Argument not in range 0..N";
+static INVALID_ITERATOR: &str = "Invalid documents iterator";
 
 declare_types! {
     /// An iterable documents

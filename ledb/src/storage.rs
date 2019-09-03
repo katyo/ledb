@@ -419,12 +419,15 @@ impl<'env> Into<NonSyncSupercow<'env, Environment>> for Storage {
     }
 }
 
+/// The list of collection and index definitions
+type Definitions = Vec<(CollectionDef, Vec<IndexDef>)>;
+
 fn load_databases(
     env: &Environment,
     db: &Database,
-) -> Result<(Serial, Vec<(CollectionDef, Vec<IndexDef>)>)> {
+) -> Result<(Serial, Definitions)> {
     let txn = ReadTransaction::new(env).wrap_err()?;
-    let cursor = txn.cursor(db.clone()).wrap_err()?;
+    let cursor = txn.cursor(db).wrap_err()?;
     let access = txn.access();
     let mut defs: HashMap<String, (CollectionDef, Vec<IndexDef>)> = HashMap::new();
     let mut last_serial: Serial = 0;
@@ -478,16 +481,14 @@ fn open_env(path: &Path, opts: Options) -> Result<Environment> {
 fn realpath(path: &Path) -> Result<PathBuf> {
     let path = if path.has_root() {
         path.to_path_buf()
+    } else if let Ok(path) = path.strip_prefix("~") {
+        home_dir()
+            .ok_or_else(|| "Unable to determine home directory")
+            .wrap_err()?
+            .as_path()
+            .join(path)
     } else {
-        if let Ok(path) = path.strip_prefix("~") {
-            home_dir()
-                .ok_or_else(|| "Unable to determine home directory")
-                .wrap_err()?
-                .as_path()
-                .join(path)
-        } else {
-            current_dir().wrap_err()?.as_path().join(path)
-        }
+        current_dir().wrap_err()?.as_path().join(path)
     };
     safe_canonicalize(path.as_path())
 }

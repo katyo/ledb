@@ -144,7 +144,7 @@ declare_types! {
         method has(mut cx) {
             let id = cx.argument::<JsNumber>(0)?.value();
 
-            if id < 1.0 || id > u32::MAX as f64 {
+            if id < 1.0 || id > f64::from(u32::MAX) {
                 return cx.throw_range_error("Document id must be in range 1..N");
             }
 
@@ -164,7 +164,7 @@ declare_types! {
         method get(mut cx) {
             let id = cx.argument::<JsNumber>(0)?.value();
 
-            if id < 1.0 || id > u32::MAX as f64 {
+            if id < 1.0 || id > f64::from(u32::MAX) {
                 return cx.throw_range_error("Document id must be in range 1..N");
             }
 
@@ -201,7 +201,7 @@ declare_types! {
         method delete(mut cx) {
             let id = cx.argument::<JsNumber>(0)?.value();
 
-            if id < 1.0 || id > u32::MAX as f64 {
+            if id < 1.0 || id > f64::from(u32::MAX) {
                 return cx.throw_range_error("Document id must be in range 1..N");
             }
 

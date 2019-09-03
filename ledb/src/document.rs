@@ -65,7 +65,7 @@ impl RawDocument {
     /// At this moment we use [CBOR](https://cbor.io/) for effectively store documents into DB backend.
     /// Since the internal representation does not contains primary identifier, it adds on reading documents from DB.
     ///
-    pub fn into_bin(&self) -> Result<Vec<u8>> {
+    pub fn to_bin(&self) -> Result<Vec<u8>> {
         serde_cbor::to_vec(&self.1).wrap_err()
     }
 
@@ -187,7 +187,7 @@ mod test {
             name: "elen".into(),
             email: None,
         };
-        let bin = RawDocument::from_doc(&src).unwrap().into_bin().unwrap();
+        let bin = RawDocument::from_doc(&src).unwrap().to_bin().unwrap();
 
         let raw = RawDocument::from_bin(&bin).unwrap();
         let res = RawDocument::from_doc(&src).unwrap();
@@ -195,7 +195,7 @@ mod test {
 
         assert_eq!(res, raw);
         assert_eq!(doc, src);
-        assert_eq!(res.into_bin().unwrap(), raw.into_bin().unwrap());
+        assert_eq!(res.to_bin().unwrap(), raw.to_bin().unwrap());
     }
 
     #[test]

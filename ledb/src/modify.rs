@@ -3,6 +3,7 @@ use std::{
     iter::once,
     ops::Deref,
     result::Result as StdResult,
+    f64::EPSILON,
 };
 
 use regex::Regex;
@@ -94,7 +95,7 @@ impl Serialize for Modify {
     fn serialize<S: Serializer>(&self, serializer: S) -> StdResult<S::Ok, S::Error> {
         let mut map = serializer.serialize_map(Some(self.0.len()))?;
         for (field, actions) in &self.0 {
-            if actions.len() > 0 {
+            if !actions.is_empty() {
                 if actions.len() == 1 {
                     map.serialize_entry(field, &actions[0])?;
                 } else {
@@ -182,7 +183,7 @@ fn modify_value(mods: &HashMap<Identifier, Vec<Action>>, pfx: &str, mut val: Val
         Bool(_) => modify_primitive(mods, pfx, val),
         Bytes(_) => modify_primitive(mods, pfx, val),
         Array(mut vec) => {
-            if let Some(acts) = mods.get(pfx.into()) {
+            if let Some(acts) = mods.get(pfx) {
                 for act in acts {
                     use Action::*;
                     match act {
@@ -230,13 +231,13 @@ fn modify_value(mods: &HashMap<Identifier, Vec<Action>>, pfx: &str, mut val: Val
             )
         }
         Map(mut map) => {
-            if let Some(acts) = mods.get(pfx.into()) {
+            if let Some(acts) = mods.get(pfx) {
                 for act in acts {
                     use Action::*;
+                    #[allow(clippy::single_match)]
                     match act {
-                        Merge(Map(obj)) => {
-                            map.extend(obj.iter().map(|(k, v)| (k.clone(), v.clone())));
-                        }
+                        Merge(Map(obj)) =>
+                            map.extend(obj.iter().map(|(k, v)| (k.clone(), v.clone()))),
                         _ => (),
                     }
                 }
@@ -257,7 +258,7 @@ fn modify_value(mods: &HashMap<Identifier, Vec<Action>>, pfx: &str, mut val: Val
 fn modify_primitive(mods: &HashMap<Identifier, Vec<Action>>, pfx: &str, mut val: Value) -> Value {
     use Value::*;
 
-    if let Some(acts) = mods.get(pfx.into()) {
+    if let Some(acts) = mods.get(pfx) {
         for act in acts {
             use Action::*;
             val = match (&val, act) {
@@ -308,7 +309,7 @@ fn modify_primitive(mods: &HashMap<Identifier, Vec<Action>>, pfx: &str, mut val:
     }
 
     match val {
-        Float(v) if (v as i64) as f64 == v => Integer(v as i128),
+        Float(v) if (v.trunc() - v).abs() < EPSILON => Integer(v as i128),
         _ => val,
     }
 }
@@ -316,7 +317,7 @@ fn modify_primitive(mods: &HashMap<Identifier, Vec<Action>>, pfx: &str, mut val:
 fn nested_field(pfx: &str, key: &Value) -> String {
     use self::Value::*;
     match key {
-        Text(s) => pfx.to_owned() + if pfx.len() > 0 { "." } else { "" } + s,
+        Text(s) => pfx.to_owned() + if pfx.is_empty() { "" } else { "." } + s,
         Integer(i) => pfx.to_owned() + "[" + &i.to_string() + "]",
         _ => pfx.into(),
     }
@@ -326,6 +327,7 @@ mod splice {
     use super::Value;
     use serde::{de, ser::SerializeSeq, Deserialize, Deserializer, Serializer};
 
+    #[allow(clippy::ptr_arg, clippy::trivially_copy_pass_by_ref)]
     pub fn serialize<S: Serializer>(
         off: &i32,
         del: &i32,

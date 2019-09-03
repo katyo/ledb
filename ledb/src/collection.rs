@@ -229,7 +229,7 @@ impl Collection {
                             .with_id(id);
 
                         access
-                            .put(&handle.db, &Unaligned::new(id), &new_doc.into_bin()?, f)
+                            .put(&handle.db, &Unaligned::new(id), &new_doc.to_bin()?, f)
                             .wrap_err()?;
 
                         (old_doc, new_doc)
@@ -317,7 +317,7 @@ impl Collection {
                     let mut access = txn.access();
 
                     access
-                        .put(&handle.db, &Unaligned::new(id), &doc.into_bin()?, f)
+                        .put(&handle.db, &Unaligned::new(id), &doc.to_bin()?, f)
                         .wrap_err()?;
                 }
 
@@ -405,7 +405,7 @@ impl Collection {
                 .put(
                     &handle.db,
                     &Unaligned::new(id),
-                    &doc.into_bin()?,
+                    &doc.to_bin()?,
                     PutFlags::empty(),
                 ).wrap_err()?;
 
@@ -569,7 +569,7 @@ impl Collection {
         {
             let indexes = handle.indexes.read().wrap_err()?;
             // search alive index
-            if let Some(_) = indexes.iter().find(|index| index.path() == path) {
+            if indexes.iter().any(|index| index.path() == path) {
                 return Ok(false);
             }
         }
@@ -829,10 +829,12 @@ where
 
 impl<T> ExactSizeIterator for DocumentsIterator<T> where T: DeserializeOwned + Document {}
 
+#[allow(clippy::trivially_copy_pass_by_ref)]
 fn order_primary_asc(a: &Primary, b: &Primary) -> Ordering {
     a.cmp(b)
 }
 
+#[allow(clippy::trivially_copy_pass_by_ref)]
 fn order_primary_desc(a: &Primary, b: &Primary) -> Ordering {
     b.cmp(a)
 }

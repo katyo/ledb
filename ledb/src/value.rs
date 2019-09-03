@@ -1,6 +1,5 @@
 use std::{
     borrow::Cow,
-    mem::transmute,
     str::from_utf8,
 };
 
@@ -26,6 +25,7 @@ mod float {
     use super::OrderedFloat;
     use serde::{Deserialize, Deserializer, Serializer};
 
+    #[allow(clippy::trivially_copy_pass_by_ref)]
     pub fn serialize<S: Serializer>(
         OrderedFloat(val): &OrderedFloat<f64>,
         serializer: S,
@@ -63,17 +63,17 @@ impl KeyData {
                 if raw.len() != 1 {
                     return Err("Bool key must be 1 byte length".into());
                 }
-                Bool(if raw[0] == 0 { false } else { true })
+                Bool(raw[0] != 0)
             }
         })
     }
 
     /// Converts key data into binary representation
-    pub fn into_raw(&self) -> &[u8] {
+    pub fn as_raw(&self) -> &[u8] {
         use self::KeyData::*;
         match self {
-            Int(val) => unsafe { transmute::<&i64, &[u8; 8]>(val) },
-            Float(val) => unsafe { transmute::<&f64, &[u8; 8]>(val) },
+            Int(val) => unsafe { &*(val as *const i64 as *const [u8; 8]) },
+            Float(val) => unsafe { &*(val as *const ordered_float::OrderedFloat<f64> as *const [u8; 8]) },
             String(val) => if val.is_empty() {
                 b"\0"
             } else {
@@ -84,7 +84,7 @@ impl KeyData {
             } else {
                 val.as_slice()
             },
-            Bool(val) => unsafe { transmute::<&bool, &[u8; 1]>(val) },
+            Bool(val) => unsafe { &*(val as *const bool as *const [u8; 1]) },
         }
     }
 
@@ -112,7 +112,7 @@ impl KeyData {
     }
 
     /// Simple data type casting
-    pub fn as_type<'a>(&'a self, typ: KeyType) -> Option<&'a KeyData> {
+    pub fn as_type(&self, typ: KeyType) -> Option<&KeyData> {
         use self::KeyData::*;
         Some(match (typ, self) {
             (KeyType::Int, Int(..))
@@ -125,7 +125,7 @@ impl KeyData {
     }
 
     /// Convert key data into specified type
-    pub fn into_type<'a>(&'a self, typ: KeyType) -> Option<Cow<'a, KeyData>> {
+    pub fn to_type(&self, typ: KeyType) -> Option<Cow<'_, KeyData>> {
         use self::KeyData::*;
         Some(if let Some(v) = self.as_type(typ) {
             Cow::Borrowed(v)
@@ -291,86 +291,86 @@ mod test {
     fn into_type() {
         assert_eq!(
             KeyData::from("abc")
-                .into_type(KeyType::String)
+                .to_type(KeyType::String)
                 .unwrap()
                 .get_type(),
             KeyType::String
         );
-        assert_eq!(KeyData::from("abc").into_type(KeyType::Int), None);
+        assert_eq!(KeyData::from("abc").to_type(KeyType::Int), None);
         assert_eq!(
             KeyData::from("123")
-                .into_type(KeyType::Int)
+                .to_type(KeyType::Int)
                 .unwrap()
                 .into_owned(),
             KeyData::from(123)
         );
         assert_eq!(
             KeyData::from("12.3")
-                .into_type(KeyType::Float)
+                .to_type(KeyType::Float)
                 .unwrap()
                 .into_owned(),
             KeyData::from(12.3)
         );
-        assert_eq!(KeyData::from("12.3").into_type(KeyType::Int), None);
+        assert_eq!(KeyData::from("12.3").to_type(KeyType::Int), None);
         assert_eq!(
             KeyData::from(123)
-                .into_type(KeyType::Int)
+                .to_type(KeyType::Int)
                 .unwrap()
                 .get_type(),
             KeyType::Int
         );
         assert_eq!(
             KeyData::from(123)
-                .into_type(KeyType::Float)
+                .to_type(KeyType::Float)
                 .unwrap()
                 .into_owned(),
             KeyData::from(123.0)
         );
         assert_eq!(
             KeyData::from(123)
-                .into_type(KeyType::String)
+                .to_type(KeyType::String)
                 .unwrap()
                 .into_owned(),
             KeyData::from("123")
         );
         assert_eq!(
             KeyData::from(12.3)
-                .into_type(KeyType::Float)
+                .to_type(KeyType::Float)
                 .unwrap()
                 .into_owned(),
             KeyData::from(12.3)
         );
         assert_eq!(
             KeyData::from(12.3)
-                .into_type(KeyType::Int)
+                .to_type(KeyType::Int)
                 .unwrap()
                 .into_owned(),
             KeyData::from(12)
         );
         assert_eq!(
             KeyData::from(12.5)
-                .into_type(KeyType::Int)
+                .to_type(KeyType::Int)
                 .unwrap()
                 .into_owned(),
             KeyData::from(13)
         );
         assert_eq!(
             KeyData::from(12.3)
-                .into_type(KeyType::String)
+                .to_type(KeyType::String)
                 .unwrap()
                 .into_owned(),
             KeyData::from("12.3")
         );
         assert_eq!(
             KeyData::from(true)
-                .into_type(KeyType::Bool)
+                .to_type(KeyType::Bool)
                 .unwrap()
                 .get_type(),
             KeyType::Bool
         );
         assert_eq!(
             KeyData::from(true)
-                .into_type(KeyType::String)
+                .to_type(KeyType::String)
                 .unwrap()
                 .into_owned(),
             KeyData::from("true")

@@ -483,6 +483,6 @@ mod tests {
                     System::current().stop();
                 }).map_err(|_| ())
             );
-        });
+        }).unwrap();
     }
 }

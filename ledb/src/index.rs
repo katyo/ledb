@@ -149,10 +149,10 @@ impl Index {
 
         let old_keys = old_doc
             .map(|doc| self.extract(doc))
-            .unwrap_or(HashSet::new());
+            .unwrap_or_default();
         let new_keys = new_doc
             .map(|doc| self.extract(doc))
-            .unwrap_or(HashSet::new());
+            .unwrap_or_default();
 
         let (old_keys, new_keys) = (
             old_keys.difference(&new_keys),
@@ -165,7 +165,7 @@ impl Index {
 
         for key in old_keys {
             access
-                .del_item(&handle.db, key.into_raw(), &Unaligned::new(id))
+                .del_item(&handle.db, key.as_raw(), &Unaligned::new(id))
                 .wrap_err()?;
         }
 
@@ -176,7 +176,7 @@ impl Index {
 
         for key in new_keys {
             access
-                .put(&handle.db, key.into_raw(), &Unaligned::new(id), f)
+                .put(&handle.db, key.as_raw(), &Unaligned::new(id), f)
                 .wrap_err()?;
         }
 
@@ -201,12 +201,12 @@ impl Index {
         let handle = self.handle();
 
         for key in keys {
-            if let Some(key) = key.into_type(handle.key) {
+            if let Some(key) = key.to_type(handle.key) {
                 let mut cursor = txn.cursor(self.clone()).wrap_err()?;
 
                 match handle.kind {
                     IndexKind::Unique => match cursor
-                        .seek_k_both::<[u8], Unaligned<Primary>>(&access, key.into_raw())
+                        .seek_k_both::<[u8], Unaligned<Primary>>(&access, key.as_raw())
                         .to_opt()
                     {
                         Ok(Some((_key, id))) => {
@@ -217,7 +217,7 @@ impl Index {
                     },
                     IndexKind::Index => {
                         match cursor
-                            .seek_k::<[u8], Unaligned<Primary>>(&access, key.into_raw())
+                            .seek_k::<[u8], Unaligned<Primary>>(&access, key.as_raw())
                             .to_opt()
                         {
                             Ok(Some(..)) => (),
@@ -256,8 +256,8 @@ impl Index {
         let mut out = HashSet::new();
         let handle = self.handle();
 
-        let beg = beg.and_then(|(key, inc)| key.into_type(handle.key).map(|key| (key, inc)));
-        let end = end.and_then(|(key, inc)| key.into_type(handle.key).map(|key| (key, inc)));
+        let beg = beg.and_then(|(key, inc)| key.to_type(handle.key).map(|key| (key, inc)));
+        let end = end.and_then(|(key, inc)| key.to_type(handle.key).map(|key| (key, inc)));
         let cursor = txn.cursor(self.clone()).wrap_err()?;
 
         match handle.kind {
@@ -267,7 +267,7 @@ impl Index {
                     access,
                     |c, a| match beg {
                         Some((beg_key, beg_inc)) => {
-                            let p = c.seek_range_k(a, beg_key.into_raw())?;
+                            let p = c.seek_range_k(a, beg_key.as_raw())?;
                             if beg_inc {
                                 Ok(p)
                             } else {
@@ -282,10 +282,13 @@ impl Index {
                     match (item, &end) {
                         (Ok((key, id)), Some((end_key, end_inc))) => {
                             let key = KeyData::from_raw(end_key.get_type(), key)?;
-                            if &key < &end_key || *end_inc && &key <= &end_key {
-                                out.insert(id.get());
-                            } else {
-                                break;
+                            #[allow(clippy::op_ref)]
+                            {
+                                if &key < end_key || *end_inc && &key <= end_key {
+                                    out.insert(id.get());
+                                } else {
+                                    break;
+                                }
                             }
                         }
                         (Ok((_, id)), _) => {
@@ -302,7 +305,7 @@ impl Index {
                     |c, a| {
                         let key = match beg {
                             Some((beg_key, beg_inc)) => {
-                                let p = c.seek_range_k::<[u8], [u8]>(a, beg_key.into_raw())?.0;
+                                let p = c.seek_range_k::<[u8], [u8]>(a, beg_key.as_raw())?.0;
                                 if beg_inc {
                                     p
                                 } else {
@@ -327,12 +330,15 @@ impl Index {
                     match (item, &end) {
                         (Ok((key, ids)), Some((end_key, end_inc))) => {
                             let key = KeyData::from_raw(end_key.get_type(), key)?;
-                            if &key < &end_key || *end_inc && &key <= &end_key {
-                                for id in ids {
-                                    out.insert(id.get());
+                            #[allow(clippy::op_ref)]
+                            {
+                                if &key < end_key || *end_inc && &key <= end_key {
+                                    for id in ids {
+                                        out.insert(id.get());
+                                    }
+                                } else {
+                                    break;
                                 }
-                            } else {
-                                break;
                             }
                         }
                         (Ok((_, ids)), _) => {
@@ -454,7 +460,7 @@ fn extract_field_primitives(doc: &Value, typ: KeyType, keys: &mut HashSet<KeyDat
             .for_each(|(key, _doc)| extract_field_primitives(key, typ, keys)),
         (typ, val) => {
             if let Some(val) = KeyData::from_val(&val) {
-                if let Some(val) = val.into_type(typ) {
+                if let Some(val) = val.to_type(typ) {
                     keys.insert(val.into_owned());
                 }
             }

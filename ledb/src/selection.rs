@@ -16,16 +16,14 @@ impl Selection {
         Selection { ids, inv }
     }
 
+    #[allow(clippy::trivially_copy_pass_by_ref)]
     pub fn has(&self, id: &Primary) -> bool {
-        match self.inv {
-            false => self.ids.contains(id),
-            true => !self.ids.contains(id),
-        }
+        self.inv ^ self.ids.contains(id)
     }
 
     pub fn filter<I: Iterator<Item = Result<Primary>>>(self, iter: I) -> impl Iterator<Item = Result<Primary>> {
         iter.filter(move |res| if let Ok(id) = res {
-            self.has(&id)
+            self.has(id)
         } else {
             true
         })

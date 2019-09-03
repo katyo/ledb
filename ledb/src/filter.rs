@@ -179,6 +179,7 @@ mod order {
     use std::collections::HashMap;
     use serde::{Serializer, Deserializer, Deserialize, de::{self}, ser::{SerializeMap}};
 
+    #[allow(clippy::trivially_copy_pass_by_ref)]
     pub fn serialize<S: Serializer>(field: &Identifier, op: &OrderKind, serializer: S) -> Result<S::Ok, S::Error> {
         let mut map = serializer.serialize_map(Some(1))?;
         map.serialize_entry(&field, &op)?;
