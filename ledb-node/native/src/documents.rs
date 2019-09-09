@@ -1,4 +1,4 @@
-use std::{mem::replace, usize};
+use std::usize;
 
 use neon::prelude::*;
 use neon_serde::to_value;
@@ -34,7 +34,7 @@ declare_types! {
                 let guard = cx.lock();
                 let mut this = this.borrow_mut(&guard);
 
-                if let Some(iter) = replace(&mut this.0, None) {
+                if let Some(iter) = this.0.take() {
                     this.0 = Some(Box::new(iter.skip(num)));
                     Ok(())
                 } else {
@@ -60,7 +60,7 @@ declare_types! {
                 let guard = cx.lock();
                 let mut this = this.borrow_mut(&guard);
 
-                if let Some(iter) = replace(&mut this.0, None) {
+                if let Some(iter) = this.0.take() {
                     this.0 = Some(Box::new(iter.take(num)));
                     Ok(())
                 } else {
@@ -119,7 +119,7 @@ declare_types! {
                 let guard = cx.lock();
                 let mut this = this.borrow_mut(&guard);
 
-                if let Some(iter) = replace(&mut this.0, None) {
+                if let Some(iter) = this.0.take() {
                     iter.collect::<Result<Vec<_>>>()
                 } else {
                     Err(INVALID_ITERATOR.into())

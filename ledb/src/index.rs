@@ -1,6 +1,5 @@
 use std::{
     collections::HashSet,
-    mem::replace,
     ops::Deref,
     sync::{
         atomic::{AtomicBool, Ordering as AtomicOrdering},
@@ -378,7 +377,7 @@ impl Index {
 
 impl Drop for Index {
     fn drop(&mut self) {
-        let data = replace(&mut self.0, None).unwrap();
+        let data = self.0.take().unwrap();
 
         if let Ok(IndexData { db, delete, .. }) = Arc::try_unwrap(data) {
             if delete.load(AtomicOrdering::SeqCst) {

@@ -2,7 +2,6 @@ use std::{
     cmp::Ordering,
     collections::HashSet,
     marker::PhantomData,
-    mem::replace,
     ops::Deref,
     sync::{
         atomic::{AtomicBool, Ordering as AtomicOrdering},
@@ -678,7 +677,7 @@ impl Collection {
 
 impl Drop for Collection {
     fn drop(&mut self) {
-        let data = replace(&mut self.0, None).unwrap();
+        let data = self.0.take().unwrap();
 
         if let Ok(CollectionData { db, delete, .. }) = Arc::try_unwrap(data) {
             if delete.load(AtomicOrdering::SeqCst) {
