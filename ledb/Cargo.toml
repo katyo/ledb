@@ -1,6 +1,6 @@
 [package]
 name = "ledb"
-version = "0.3.0"
+version = "0.4.0"
 authors = ["Kayo <kayo@illumium.org>"]
 license = "MIT"
 readme = "README.md"
@@ -9,30 +9,35 @@ homepage = "https://github.com/katyo/ledb/tree/master/ledb"
 keywords = ["storage", "json", "cbor", "lmdb", "btree"]
 categories = ["database"]
 description = "Lightweight embedded database built over LMDB"
-
+edition = "2018"
 
 [badges]
 travis-ci = { repository = "katyo/ledb" }
 appveyor = { repository = "katyo/ledb" }
 
 [dependencies]
-byteorder = "1.0"
-ordered-float = { version = "1.0", features = ["serde"] }
-serde = { version = "1.0", features = ["derive"] }
-serde_cbor = "0.10"
-ron = "0.5"
-ledb-types = { version = "0.3", path = "../ledb-types", features = ["json", "cbor"] }
-ledb-derive = { version = "0.3", path = "../ledb-derive", optional = true }
-lmdb-zero = "0.4"
-regex = "1"
-supercow = "0.1"
-dirs = "2"
-dunce = "1"
+byteorder = "^1"
+ordered-float = { version = "^1", features = ["serde"] }
+serde = { version = "^1", features = ["derive"] }
+serde_cbor = "^0.11"
+ron = "^0.6"
+ledb-types = { version = "0.4", path = "../ledb-types", features = ["json", "cbor"] }
+ledb-derive = { version = "0.4", path = "../ledb-derive", optional = true }
+lmdb = { package = "lmdb-zero", version = "0.4" }
+regex = "^1"
+supercow = "^0.1"
+dirs = "^2"
+dunce = "^1"
 
 [dev-dependencies]
-serde_json = "1"
-ledb-derive = { version = "0.3", path = "../ledb-derive", optional = false }
+serde_json = "^1"
+ledb-derive = { version = "0.4", path = "../ledb-derive", optional = false }
 
 [features]
 default = ["derive"]
 derive = ["ledb-derive"]
+json = ["ledb-types/json"]
+cbor = ["ledb-types/cbor"]
+
+[package.metadata.docs.rs]
+features = ["json", "cbor"]

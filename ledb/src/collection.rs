@@ -14,7 +14,7 @@ use lmdb::{
     LmdbResultExt, MaybeOwned, ReadTransaction, Unaligned, WriteTransaction,
 };
 use ron::ser::to_string as to_db_name;
-use serde::{de::DeserializeOwned, Serialize, Deserialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use supercow::{ext::ConstDeref, Supercow};
 
 use super::{
@@ -366,14 +366,16 @@ impl Collection {
         let txn = ReadTransaction::new(handle.storage.clone()).wrap_err()?;
         let access = txn.access();
 
-        Ok(match access
-            .get::<Unaligned<Primary>, [u8]>(&handle.db, &Unaligned::new(id))
-            .to_opt()
-            .wrap_err()?
-        {
-            Some(val) => Some(RawDocument::from_bin(val)?.with_id(id).into_doc()?),
-            None => None,
-        })
+        Ok(
+            match access
+                .get::<Unaligned<Primary>, [u8]>(&handle.db, &Unaligned::new(id))
+                .to_opt()
+                .wrap_err()?
+            {
+                Some(val) => Some(RawDocument::from_bin(val)?.with_id(id).into_doc()?),
+                None => None,
+            },
+        )
     }
 
     /// Replace document in the collection
@@ -406,7 +408,8 @@ impl Collection {
                     &Unaligned::new(id),
                     &doc.to_bin()?,
                     PutFlags::empty(),
-                ).wrap_err()?;
+                )
+                .wrap_err()?;
 
             old_doc
         };
@@ -440,7 +443,7 @@ impl Collection {
                     RawDocument::from_bin(old_doc)?.with_id(id)
                 } else {
                     // document not exists
-                    return Ok(false)
+                    return Ok(false);
                 };
 
             access.del_key(&handle.db, &Unaligned::new(id)).wrap_err()?;
@@ -596,7 +599,8 @@ impl Collection {
                     &access2,
                     |c, a| c.first(a),
                     Cursor::next::<Unaligned<Primary>, [u8]>,
-                ).wrap_err()?
+                )
+                .wrap_err()?
                 {
                     let (key, val) = res.wrap_err()?;
                     let doc = RawDocument::from_bin(val)?.with_id(key.get());
@@ -717,8 +721,7 @@ unsafe impl ConstDeref for Collection {
 
 impl<'a> Into<Supercow<'a, Database<'a>>> for Collection {
     fn into(self) -> Supercow<'a, Database<'a>> {
-        let this = self.clone();
-        Supercow::shared(this)
+        Supercow::shared(self)
     }
 }
 
@@ -762,7 +765,8 @@ impl Iterator for PrimaryIterator {
                 OrderKind::Asc => self.cur.first::<Unaligned<Primary>, [u8]>(&access),
                 OrderKind::Desc => self.cur.last::<Unaligned<Primary>, [u8]>(&access),
             }
-        }.to_opt()
+        }
+        .to_opt()
         {
             Ok(Some((id, _val))) => Some(Ok(id.get())),
             Ok(None) => None,

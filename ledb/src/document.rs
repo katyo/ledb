@@ -1,11 +1,10 @@
 use std::{
-    ops::{Deref, DerefMut},
     convert::TryInto,
+    ops::{Deref, DerefMut},
 };
 
 use serde::{de::DeserializeOwned, Serialize};
-use serde_cbor;
-pub use serde_cbor::{Value};
+pub use serde_cbor::Value;
 
 use super::{Document, Primary, Result, ResultWrap};
 
@@ -150,8 +149,8 @@ pub fn to_value<T: Serialize>(value: T) -> Result<Value> {
 
 #[cfg(test)]
 mod test {
-    use serde::{Serialize, Deserialize};
     use super::super::{Document, Identifier, Primary, RawDocument};
+    use serde::{Deserialize, Serialize};
 
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     pub struct User {

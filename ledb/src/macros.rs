@@ -429,11 +429,11 @@ macro_rules! _query_impl {
     );
     // out of set (not one of)
     (@filter_comp $field:tt !of $value:expr) => (
-        _query_impl!(@filter_comp_impl ! $field, In, $value.into_iter().map($crate::KeyData::from).collect())
+        _query_impl!(@filter_comp_impl ! $field, In, $value.iter().map($crate::KeyData::from).collect())
     );
     // in set (one of)
     (@filter_comp $field:tt of $value:expr) => (
-        _query_impl!(@filter_comp_impl $field, In, $value.into_iter().map($crate::KeyData::from).collect())
+        _query_impl!(@filter_comp_impl $field, In, $value.iter().map($crate::KeyData::from).collect())
     );
 
     // less than

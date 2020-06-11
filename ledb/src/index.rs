@@ -6,7 +6,8 @@ use std::{
         Arc,
     },
 };
-use float::F64;
+
+use crate::float::F64;
 
 use lmdb::{
     put::{NODUPDATA, NOOVERWRITE},
@@ -15,8 +16,8 @@ use lmdb::{
     ReadTransaction, Unaligned, WriteAccessor,
 };
 use ron::ser::to_string as to_db_name;
+use serde::{Deserialize, Serialize};
 use supercow::{ext::ConstDeref, Supercow};
-use serde::{Serialize, Deserialize};
 
 use super::{
     DatabaseDef, Enumerable, IndexKind, KeyData, KeyField, KeyType, OrderKind, Primary,
@@ -146,12 +147,8 @@ impl Index {
             .wrap_err()?;
         let id = doc.req_id()?;
 
-        let old_keys = old_doc
-            .map(|doc| self.extract(doc))
-            .unwrap_or_default();
-        let new_keys = new_doc
-            .map(|doc| self.extract(doc))
-            .unwrap_or_default();
+        let old_keys = old_doc.map(|doc| self.extract(doc)).unwrap_or_default();
+        let new_keys = new_doc.map(|doc| self.extract(doc)).unwrap_or_default();
 
         let (old_keys, new_keys) = (
             old_keys.difference(&new_keys),
@@ -229,7 +226,8 @@ impl Index {
                             &access,
                             |c, a| c.get_multiple::<[Unaligned<Primary>]>(&a),
                             Cursor::next_multiple::<[Unaligned<Primary>]>,
-                        ).wrap_err()?
+                        )
+                        .wrap_err()?
                         {
                             if let Some(ids) = res.to_opt().wrap_err()? {
                                 for id in ids {
@@ -276,7 +274,8 @@ impl Index {
                         _ => c.first(a),
                     },
                     Cursor::next::<[u8], Unaligned<Primary>>,
-                ).wrap_err()?
+                )
+                .wrap_err()?
                 {
                     match (item, &end) {
                         (Ok((key, id)), Some((end_key, end_inc))) => {
@@ -324,7 +323,8 @@ impl Index {
                             c.get_multiple(a).map(|ids| (key, ids))
                         }
                     },
-                ).wrap_err()?
+                )
+                .wrap_err()?
                 {
                     match (item, &end) {
                         (Ok((key, ids)), Some((end_key, end_inc))) => {
@@ -417,8 +417,7 @@ unsafe impl ConstDeref for Index {
 
 impl<'a> Into<Supercow<'a, Database<'a>>> for Index {
     fn into(self) -> Supercow<'a, Database<'a>> {
-        let this = self.clone();
-        Supercow::shared(this)
+        Supercow::shared(self)
     }
 }
 
@@ -438,9 +437,11 @@ fn extract_field_values<'a, 'i: 'a, I: Iterator<Item = &'i str> + Clone>(
             Map(val) if name == "*" => val
                 .iter()
                 .for_each(|(_key, doc)| extract_field_values(doc, typ, path, keys)),
-            Map(val) => if let Some(doc) = val.get(&name.to_owned().into()) {
-                extract_field_values(doc, typ, &sub_path, keys);
-            },
+            Map(val) => {
+                if let Some(doc) = val.get(&name.to_owned().into()) {
+                    extract_field_values(doc, typ, &sub_path, keys);
+                }
+            }
             _ => (),
         }
     } else {
@@ -503,7 +504,8 @@ impl Iterator for IndexIterator {
                 OrderKind::Asc => self.cur.first::<[u8], Unaligned<Primary>>(&access),
                 OrderKind::Desc => self.cur.last::<[u8], Unaligned<Primary>>(&access),
             }
-        }.to_opt()
+        }
+        .to_opt()
         {
             Ok(Some((_key, id))) => Some(Ok(id.get())),
             Ok(None) => None,

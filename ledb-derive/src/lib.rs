@@ -9,9 +9,6 @@ This crate helps to turn rust structures into documents which can be stored, ind
 You may turn any struct into a document using `Document` in derive annotation like this:
 
 ```rust
-# extern crate serde;
-# extern crate ledb;
-#
 use serde::{Serialize, Deserialize};
 use ledb::{Document};
 
@@ -215,20 +212,13 @@ impl Document for MetaData {
 
 */
 
-#![recursion_limit = "128"]
-extern crate proc_macro;
-
-extern crate proc_macro2;
-extern crate syn;
-extern crate quote;
-
 mod document;
 mod wrapper;
 
-use proc_macro::TokenStream;
-use syn::{DeriveInput, parse_macro_input};
-use quote::quote;
 use document::derive_document_wrapped;
+use proc_macro::TokenStream;
+use quote::quote;
+use syn::{parse_macro_input, DeriveInput};
 
 #[proc_macro_derive(Document, attributes(document))]
 pub fn derive_document(input: TokenStream) -> TokenStream {

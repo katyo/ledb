@@ -1,14 +1,14 @@
 use std::{
     fmt::{self, Display},
-    str::Utf8Error,
     io::Error as IoError,
-    sync::PoisonError,
     result::Result as StdResult,
+    str::Utf8Error,
+    sync::PoisonError,
 };
 
-use serde_cbor::error::Error as CborError;
-use ron::{ser::Error as RonEncError, de::Error as RonDecError};
 use lmdb::error::Error as DbError;
+use ron::Error as RonError;
+use serde_cbor::error::Error as CborError;
 
 /// Database error type
 #[derive(Debug)]
@@ -37,6 +37,12 @@ impl Display for Error {
     }
 }
 
+impl Into<String> for Error {
+    fn into(self) -> String {
+        self.to_string()
+    }
+}
+
 /// Database result type
 pub type Result<T> = StdResult<T, Error>;
 
@@ -46,14 +52,8 @@ impl From<CborError> for Error {
     }
 }
 
-impl From<RonDecError> for Error {
-    fn from(e: RonDecError) -> Self {
-        Error::StorageError(format!("{}", e))
-    }
-}
-
-impl From<RonEncError> for Error {
-    fn from(e: RonEncError) -> Self {
+impl From<RonError> for Error {
+    fn from(e: RonError) -> Self {
         Error::StorageError(format!("{}", e))
     }
 }
@@ -71,7 +71,8 @@ impl From<IoError> for Error {
 }
 
 impl<E> From<PoisonError<E>> for Error
-    where PoisonError<E>: Display
+where
+    PoisonError<E>: Display,
 {
     fn from(e: PoisonError<E>) -> Self {
         Error::SyncError(format!("{}", e))
@@ -102,7 +103,8 @@ pub trait ResultWrap<T> {
 }
 
 impl<T, E> ResultWrap<T> for StdResult<T, E>
-    where Error: From<E>
+where
+    Error: From<E>,
 {
     /// Convert result
     fn wrap_err(self) -> Result<T> {

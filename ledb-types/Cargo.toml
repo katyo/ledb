@@ -1,6 +1,6 @@
 [package]
 name = "ledb-types"
-version = "0.3.0"
+version = "0.4.0"
 authors = ["Kayo <kayo@illumium.org>"]
 license = "MIT"
 readme = "README.md"
@@ -9,18 +9,22 @@ homepage = "https://github.com/katyo/ledb/tree/master/ledb-types"
 keywords = ["storage", "document", "json", "cbor"]
 categories = ["database"]
 description = "Basic types for storable documents"
+edition = "2018"
 
 [badges]
 travis-ci = { repository = "katyo/ledb" }
 appveyor = { repository = "katyo/ledb" }
 
 [dependencies]
-serde = { version = "1", features = ["derive"] }
-serde_json = { version = "1", optional = true }
-serde_cbor = { version = "0.10", optional = true }
-bytes = { version = "0.4", optional = true }
+serde = { version = "^1", features = ["derive"] }
+serde_json = { version = "^1", optional = true }
+serde_cbor = { version = "^0.11", optional = true }
+bytes = { version = "^0.5", optional = true }
 
 [features]
 default = []
 json = ["serde_json"]
 cbor = ["serde_cbor"]
+
+[package.metadata.docs.rs]
+features = ["json", "cbor"]

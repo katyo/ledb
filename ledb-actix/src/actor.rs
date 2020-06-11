@@ -1,12 +1,12 @@
+use actix::{Actor, Addr, Handler, Message, SyncArbiter, SyncContext};
+use ledb::{Result as LeResult, Storage as LeStorage};
+use serde::{de::DeserializeOwned, Serialize};
 use std::marker::PhantomData;
 use std::path::Path;
-use serde::{Serialize, de::DeserializeOwned};
-use ledb::{Storage as LeStorage, Result as LeResult};
-use actix::{Actor, Addr, Message, SyncContext, SyncArbiter, Handler};
 
 use super::{
-    Document, DocumentsIterator, Filter, Identifier, IndexKind, Info,
-    KeyType, Modify, Order, Primary, Stats, Options, KeyFields
+    Document, DocumentsIterator, Filter, Identifier, IndexKind, Info, KeyFields, KeyType, Modify,
+    Options, Order, Primary, Stats,
 };
 
 /// Storage actor
@@ -102,7 +102,11 @@ impl Message for EnsureCollectionMsg {
 impl Handler<EnsureCollectionMsg> for Storage {
     type Result = <EnsureCollectionMsg as Message>::Result;
 
-    fn handle(&mut self, EnsureCollectionMsg(name): EnsureCollectionMsg, _: &mut Self::Context) -> Self::Result {
+    fn handle(
+        &mut self,
+        EnsureCollectionMsg(name): EnsureCollectionMsg,
+        _: &mut Self::Context,
+    ) -> Self::Result {
         Ok(if self.0.has_collection(&name)? {
             false
         } else {
@@ -131,7 +135,11 @@ impl Message for DropCollectionMsg {
 impl Handler<DropCollectionMsg> for Storage {
     type Result = <DropCollectionMsg as Message>::Result;
 
-    fn handle(&mut self, DropCollectionMsg(collection): DropCollectionMsg, _: &mut Self::Context) -> Self::Result {
+    fn handle(
+        &mut self,
+        DropCollectionMsg(collection): DropCollectionMsg,
+        _: &mut Self::Context,
+    ) -> Self::Result {
         self.0.drop_collection(collection)
     }
 }
@@ -155,7 +163,11 @@ impl Message for GetIndexesMsg {
 impl Handler<GetIndexesMsg> for Storage {
     type Result = <GetIndexesMsg as Message>::Result;
 
-    fn handle(&mut self, GetIndexesMsg(collection): GetIndexesMsg, _: &mut Self::Context) -> Self::Result {
+    fn handle(
+        &mut self,
+        GetIndexesMsg(collection): GetIndexesMsg,
+        _: &mut Self::Context,
+    ) -> Self::Result {
         self.0.collection(collection)?.get_indexes()
     }
 }
@@ -179,14 +191,23 @@ impl Message for SetIndexesMsg {
 impl Handler<SetIndexesMsg> for Storage {
     type Result = <SetIndexesMsg as Message>::Result;
 
-    fn handle(&mut self, SetIndexesMsg(collection, indexes): SetIndexesMsg, _: &mut Self::Context) -> Self::Result {
+    fn handle(
+        &mut self,
+        SetIndexesMsg(collection, indexes): SetIndexesMsg,
+        _: &mut Self::Context,
+    ) -> Self::Result {
         self.0.collection(collection)?.set_indexes(&indexes)
     }
 }
 
 /// Ensure new index for collection
 #[allow(non_snake_case)]
-pub fn EnsureIndex<C: Into<Identifier>, F: Into<Identifier>>(coll: C, field: F, kind: IndexKind, key: KeyType) -> EnsureIndexMsg {
+pub fn EnsureIndex<C: Into<Identifier>, F: Into<Identifier>>(
+    coll: C,
+    field: F,
+    kind: IndexKind,
+    key: KeyType,
+) -> EnsureIndexMsg {
     EnsureIndexMsg(coll.into(), field.into(), kind, key)
 }
 
@@ -203,8 +224,14 @@ impl Message for EnsureIndexMsg {
 impl Handler<EnsureIndexMsg> for Storage {
     type Result = <EnsureIndexMsg as Message>::Result;
 
-    fn handle(&mut self, EnsureIndexMsg(collection, field, kind, key): EnsureIndexMsg, _: &mut Self::Context) -> Self::Result {
-        self.0.collection(collection)?.ensure_index(field, kind, key)
+    fn handle(
+        &mut self,
+        EnsureIndexMsg(collection, field, kind, key): EnsureIndexMsg,
+        _: &mut Self::Context,
+    ) -> Self::Result {
+        self.0
+            .collection(collection)?
+            .ensure_index(field, kind, key)
     }
 }
 
@@ -227,7 +254,11 @@ impl Message for DropIndexMsg {
 impl Handler<DropIndexMsg> for Storage {
     type Result = <DropIndexMsg as Message>::Result;
 
-    fn handle(&mut self, DropIndexMsg(collection, field): DropIndexMsg, _: &mut Self::Context) -> Self::Result {
+    fn handle(
+        &mut self,
+        DropIndexMsg(collection, field): DropIndexMsg,
+        _: &mut Self::Context,
+    ) -> Self::Result {
         self.0.collection(collection)?.drop_index(field)
     }
 }
@@ -251,7 +282,11 @@ impl<T> Message for InsertMsg<T> {
 impl<T: Serialize + Document> Handler<InsertMsg<T>> for Storage {
     type Result = <InsertMsg<T> as Message>::Result;
 
-    fn handle(&mut self, InsertMsg(collection, document): InsertMsg<T>, _: &mut Self::Context) -> Self::Result {
+    fn handle(
+        &mut self,
+        InsertMsg(collection, document): InsertMsg<T>,
+        _: &mut Self::Context,
+    ) -> Self::Result {
         self.0.collection(collection)?.insert(&document)
     }
 }
@@ -275,7 +310,11 @@ impl<T: 'static> Message for GetMsg<T> {
 impl<T: DeserializeOwned + Document + 'static> Handler<GetMsg<T>> for Storage {
     type Result = <GetMsg<T> as Message>::Result;
 
-    fn handle(&mut self, GetMsg(collection, identifier, ..): GetMsg<T>, _: &mut Self::Context) -> Self::Result {
+    fn handle(
+        &mut self,
+        GetMsg(collection, identifier, ..): GetMsg<T>,
+        _: &mut Self::Context,
+    ) -> Self::Result {
         self.0.collection(collection)?.get(identifier)
     }
 }
@@ -299,7 +338,11 @@ impl<T: Serialize + Document> Message for PutMsg<T> {
 impl<T: Serialize + Document> Handler<PutMsg<T>> for Storage {
     type Result = <PutMsg<T> as Message>::Result;
 
-    fn handle(&mut self, PutMsg(collection, document): PutMsg<T>, _: &mut Self::Context) -> Self::Result {
+    fn handle(
+        &mut self,
+        PutMsg(collection, document): PutMsg<T>,
+        _: &mut Self::Context,
+    ) -> Self::Result {
         self.0.collection(collection)?.put(&document)
     }
 }
@@ -323,7 +366,11 @@ impl Message for DeleteMsg {
 impl Handler<DeleteMsg> for Storage {
     type Result = <DeleteMsg as Message>::Result;
 
-    fn handle(&mut self, DeleteMsg(collection, id): DeleteMsg, _: &mut Self::Context) -> Self::Result {
+    fn handle(
+        &mut self,
+        DeleteMsg(collection, id): DeleteMsg,
+        _: &mut Self::Context,
+    ) -> Self::Result {
         self.0.collection(collection)?.delete(id)
     }
 }
@@ -347,7 +394,11 @@ impl Message for UpdateMsg {
 impl Handler<UpdateMsg> for Storage {
     type Result = <UpdateMsg as Message>::Result;
 
-    fn handle(&mut self, UpdateMsg(collection, filter, modify): UpdateMsg, _: &mut Self::Context) -> Self::Result {
+    fn handle(
+        &mut self,
+        UpdateMsg(collection, filter, modify): UpdateMsg,
+        _: &mut Self::Context,
+    ) -> Self::Result {
         self.0.collection(collection)?.update(filter, modify)
     }
 }
@@ -371,7 +422,11 @@ impl Message for RemoveMsg {
 impl Handler<RemoveMsg> for Storage {
     type Result = <RemoveMsg as Message>::Result;
 
-    fn handle(&mut self, RemoveMsg(collection, filter): RemoveMsg, _: &mut Self::Context) -> Self::Result {
+    fn handle(
+        &mut self,
+        RemoveMsg(collection, filter): RemoveMsg,
+        _: &mut Self::Context,
+    ) -> Self::Result {
         self.0.collection(collection)?.remove(filter)
     }
 }
@@ -395,20 +450,24 @@ impl<T: 'static> Message for FindMsg<T> {
 impl<T: DeserializeOwned + Document + 'static> Handler<FindMsg<T>> for Storage {
     type Result = <FindMsg<T> as Message>::Result;
 
-    fn handle(&mut self, FindMsg(collection, filter, order, ..): FindMsg<T>, _: &mut Self::Context) -> Self::Result {
+    fn handle(
+        &mut self,
+        FindMsg(collection, filter, order, ..): FindMsg<T>,
+        _: &mut Self::Context,
+    ) -> Self::Result {
         self.0.collection(collection)?.find(filter, order)
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use super::{
+        Document, EnsureIndex, Find, Identifier, IndexKind, Insert, KeyType, Options, Primary,
+        Storage,
+    };
+    use serde::{Deserialize, Serialize};
+    use serde_json::{from_value, json};
     use std::fs::remove_dir_all;
-    use serde::{Serialize, Deserialize};
-    use serde_json::{from_value};
-    use futures::{Future};
-    use tokio::{spawn};
-    use actix::{System};
-    use super::{Storage, Options, EnsureIndex, Insert, Find, IndexKind, KeyType, Document, Identifier, Primary};
 
     macro_rules! json_val {
         ($($json:tt)+) => {
@@ -425,64 +484,71 @@ mod tests {
     }
 
     impl Document for BlogPost {
-        fn primary_field() -> Identifier { "id".into() }
+        fn primary_field() -> Identifier {
+            "id".into()
+        }
     }
 
     static DB_PATH: &'static str = "test_db";
 
-    #[test]
-    fn test() {
-        System::run(|| {
-            let _ = remove_dir_all(DB_PATH);
+    #[actix_rt::test]
+    async fn test() {
+        let _ = remove_dir_all(DB_PATH);
 
-            let storage = Storage::new(DB_PATH, Options::default()).unwrap();
+        let storage = Storage::new(DB_PATH, Options::default()).unwrap();
 
-            let addr = storage.start(3);
-            let addr1 = addr.clone();
-            let addr2 = addr.clone();
-            let addr3 = addr.clone();
+        let addr = storage.start(3);
 
-            spawn(
-                addr.send(
-                    Insert::<_, BlogPost>("blog", json_val!({
-                        "title": "Absurd",
-                        "tags": ["absurd", "psychology"],
-                        "content": "Still nothing..."
-                    }))
-                ).and_then(move |res| {
-                    assert_eq!(res.unwrap(), 1);
+        assert_eq!(
+            addr.send(Insert::<_, BlogPost>(
+                "blog",
+                json_val!({
+                    "title": "Absurd",
+                    "tags": ["absurd", "psychology"],
+                    "content": "Still nothing..."
+                })
+            ))
+            .await
+            .unwrap()
+            .unwrap(),
+            1
+        );
 
-                    addr1.send(Insert::<_, BlogPost>("blog", json_val!({
-                        "title": "Lorem ipsum",
-                        "tags": ["lorem", "ipsum"],
-                        "content": "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum."
-                    })))
-                }).and_then(move |res| {
-                    assert_eq!(res.unwrap(), 2);
+        assert_eq!(addr.send(Insert::<_, BlogPost>("blog", json_val!({
+            "title": "Lorem ipsum",
+            "tags": ["lorem", "ipsum"],
+            "content": "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum."
+        }))).await.unwrap().unwrap(), 2);
 
-                    addr3.send(EnsureIndex("blog", "tags", IndexKind::Index, KeyType::String))
-                }).and_then(move |res| {
-                    assert!(res.is_ok());
+        addr.send(EnsureIndex(
+            "blog",
+            "tags",
+            IndexKind::Index,
+            KeyType::String,
+        ))
+        .await
+        .unwrap()
+        .unwrap();
 
-                    addr2.send(Find::<_, BlogPost>("blog",
-                                    json_val!({ "tags": { "$eq": "psychology" } }),
-                                    json_val!("$asc")))
-                }).map(|res| {
-                    let mut docs = res.unwrap();
-                    assert_eq!(docs.size_hint(), (1, Some(1)));
-                    let doc = docs.next().unwrap().unwrap();
-                    let doc_data: BlogPost = json_val!({
-                        "id": 1,
-                        "title": "Absurd",
-                        "tags": ["absurd", "psychology"],
-                        "content": "Still nothing..."
-                    });
-                    assert_eq!(&doc, &doc_data);
-                    assert!(docs.next().is_none());
+        let mut docs = addr
+            .send(Find::<_, BlogPost>(
+                "blog",
+                json_val!({ "tags": { "$eq": "psychology" } }),
+                json_val!("$asc"),
+            ))
+            .await
+            .unwrap()
+            .unwrap();
 
-                    System::current().stop();
-                }).map_err(|_| ())
-            );
-        }).unwrap();
+        assert_eq!(docs.size_hint(), (1, Some(1)));
+        let doc = docs.next().unwrap().unwrap();
+        let doc_data: BlogPost = json_val!({
+            "id": 1,
+            "title": "Absurd",
+            "tags": ["absurd", "psychology"],
+            "content": "Still nothing..."
+        });
+        assert_eq!(&doc, &doc_data);
+        assert!(docs.next().is_none());
     }
 }

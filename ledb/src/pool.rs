@@ -1,7 +1,7 @@
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
-    sync::{Arc, Once, RwLock, Weak, ONCE_INIT},
+    sync::{Arc, Once, RwLock, Weak},
 };
 
 use super::{Result, ResultWrap, StorageData};
@@ -9,7 +9,7 @@ use super::{Result, ResultWrap, StorageData};
 type Storages = Arc<RwLock<HashMap<PathBuf, Weak<StorageData>>>>;
 
 static mut STORAGES: Option<Storages> = None;
-static INITIALIZE_STORAGES: Once = ONCE_INIT;
+static INITIALIZE_STORAGES: Once = Once::new();
 
 #[inline]
 fn init_storages() {

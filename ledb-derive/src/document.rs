@@ -1,7 +1,7 @@
+use crate::wrapper::wrap_in_const;
 use proc_macro2::{Span, TokenStream, TokenTree};
-use syn::{Data, DeriveInput, Field, Fields, Lit, LitStr, Type};
 use quote::quote;
-use wrapper::wrap_in_const;
+use syn::{Data, DeriveInput, Field, Fields, Lit, LitStr, Type};
 
 pub fn derive_document_wrapped(input: &DeriveInput) -> Result<TokenStream, String> {
     let code = derive_document(input)?;
@@ -38,12 +38,11 @@ fn derive_document(input: &DeriveInput) -> Result<TokenStream, String> {
                     }
 
                     if let Some((field_name, field_type)) = get_nested_attribute(&field) {
-                        nested_docs
-                            .push((
-                                get_serde_rename(&field).unwrap_or(field_name),
-                                field_type,
-                                has_serde_flatten(&field)
-                            ));
+                        nested_docs.push((
+                            get_serde_rename(&field).unwrap_or(field_name),
+                            field_type,
+                            has_serde_flatten(&field),
+                        ));
                     }
                 }
             }
@@ -53,7 +52,7 @@ fn derive_document(input: &DeriveInput) -> Result<TokenStream, String> {
     }
 
     let primary_field_fn = if let Some(primary_field) = primary_field {
-        let primary_field = Lit::Str(LitStr::new(&primary_field.to_string(), Span::call_site()));
+        let primary_field = Lit::Str(LitStr::new(&primary_field, Span::call_site()));
         quote! {
             fn primary_field() -> _ledb_types::Identifier {
                 #primary_field.into()
@@ -76,7 +75,9 @@ fn derive_document(input: &DeriveInput) -> Result<TokenStream, String> {
             .map(|(field_name, field_type, index_kind)| {
                 let field_name = Lit::Str(LitStr::new(&field_name, Span::call_site()));
                 let field_type = match field_type {
-                    Ok(field_type) => quote! { <#field_type as _ledb_types::DocumentKeyType>::key_type() },
+                    Ok(field_type) => {
+                        quote! { <#field_type as _ledb_types::DocumentKeyType>::key_type() }
+                    }
                     Err(key_type) => quote! { _ledb_types::KeyType::#key_type },
                 };
                 let index_kind = match index_kind.as_str() {
@@ -143,7 +144,8 @@ fn get_primary_attribute(field: &Field) -> Option<String> {
             if attr.path.leading_colon.is_none()
                 && attr.path.segments.len() == 1
                 && attr.path.segments.first().unwrap().ident == "document"
-                && attr.tokens.clone().into_iter().any(has_primary_token) {
+                && attr.tokens.clone().into_iter().any(has_primary_token)
+            {
                 return Some(ident.to_string());
             }
         }
@@ -163,27 +165,22 @@ fn get_index_attribute(field: &Field) -> Option<(String, Result<Type, TokenStrea
                     if let TokenTree::Group(group) = token {
                         let mut tokens = group.stream().into_iter();
                         match &tokens.next() {
-                            Some(TokenTree::Ident(kind))
-                                if kind == "unique" || kind == "index" => {
-                                    let key_type = if let Some(TokenTree::Ident(key)) = &tokens.next() {
-                                        match key.to_string().as_ref() {
-                                            "int" | "integer" => Err(quote!(Int)),
-                                            "float" => Err(quote!(Float)),
-                                            "str" | "string" => Err(quote!(String)),
-                                            "bin" | "binary" => Err(quote!(Binary)),
-                                            "bool" | "boolean" => Err(quote!(Bool)),
-                                            _ => Ok(field.ty.clone()),
-                                        }
-                                    } else {
-                                        Ok(field.ty.clone())
-                                    };
+                            Some(TokenTree::Ident(kind)) if kind == "unique" || kind == "index" => {
+                                let key_type = if let Some(TokenTree::Ident(key)) = &tokens.next() {
+                                    match key.to_string().as_ref() {
+                                        "int" | "integer" => Err(quote!(Int)),
+                                        "float" => Err(quote!(Float)),
+                                        "str" | "string" => Err(quote!(String)),
+                                        "bin" | "binary" => Err(quote!(Binary)),
+                                        "bool" | "boolean" => Err(quote!(Bool)),
+                                        _ => Ok(field.ty.clone()),
+                                    }
+                                } else {
+                                    Ok(field.ty.clone())
+                                };
 
-                                    return Some((
-                                        ident.to_string(),
-                                        key_type,
-                                        kind.to_string(),
-                                    ));
-                                },
+                                return Some((ident.to_string(), key_type, kind.to_string()));
+                            }
                             _ => (),
                         }
                     }
@@ -276,15 +273,18 @@ fn get_serde_rename(field: &Field) -> Option<String> {
             for token in attr.tokens.clone() {
                 if let TokenTree::Group(group) = token {
                     let mut tokens = group.stream().into_iter();
-                    match (&tokens.next(), &tokens.next(), &tokens.next(), &tokens.next()) {
+                    match (
+                        &tokens.next(),
+                        &tokens.next(),
+                        &tokens.next(),
+                        &tokens.next(),
+                    ) {
                         (
                             Some(TokenTree::Ident(name)),
                             Some(TokenTree::Punct(op)),
                             Some(TokenTree::Literal(val)),
                             None,
-                        )
-                            if name == "rename" && op.as_char() == '=' =>
-                        {
+                        ) if name == "rename" && op.as_char() == '=' => {
                             if let Lit::Str(name) = Lit::new(val.clone()) {
                                 field_name = Some(name.value());
                             }
@@ -324,7 +324,8 @@ mod test {
                         "id".into()
                     }
                 }
-            }.to_string()
+            }
+            .to_string()
         );
     }
 
@@ -416,7 +417,8 @@ mod test {
                         "_id".into()
                     }
                 }
-            }.to_string()
+            }
+            .to_string()
         );
     }
 
@@ -441,7 +443,8 @@ mod test {
                         "_id".into()
                     }
                 }
-            }.to_string()
+            }
+            .to_string()
         );
     }
 

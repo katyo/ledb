@@ -14,7 +14,7 @@ use lmdb::{
     DatabaseOptions, EnvBuilder, Environment, MaybeOwned, ReadTransaction,
 };
 use ron::de::from_str as from_db_name;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use supercow::{ext::ConstDeref, NonSyncSupercow, Supercow};
 
 use super::{
@@ -407,25 +407,20 @@ unsafe impl ConstDeref for Storage {
 
 impl<'env> Into<Supercow<'env, Environment>> for Storage {
     fn into(self) -> Supercow<'env, Environment> {
-        let this = self.clone();
-        Supercow::shared(this)
+        Supercow::shared(self)
     }
 }
 
 impl<'env> Into<NonSyncSupercow<'env, Environment>> for Storage {
     fn into(self) -> NonSyncSupercow<'env, Environment> {
-        let this = self.clone();
-        Supercow::shared(this)
+        Supercow::shared(self)
     }
 }
 
 /// The list of collection and index definitions
 type Definitions = Vec<(CollectionDef, Vec<IndexDef>)>;
 
-fn load_databases(
-    env: &Environment,
-    db: &Database,
-) -> Result<(Serial, Definitions)> {
+fn load_databases(env: &Environment, db: &Database) -> Result<(Serial, Definitions)> {
     let txn = ReadTransaction::new(env).wrap_err()?;
     let cursor = txn.cursor(db).wrap_err()?;
     let access = txn.access();
@@ -437,7 +432,8 @@ fn load_databases(
         &access,
         |c, a| c.first(a),
         Cursor::next::<str, [u8]>,
-    ).wrap_err()?
+    )
+    .wrap_err()?
     .map(|res| {
         res.wrap_err()
             .and_then(|(key, _val)| from_db_name(key).wrap_err())
@@ -496,11 +492,13 @@ fn realpath(path: &Path) -> Result<PathBuf> {
 fn safe_canonicalize(path: &Path) -> Result<PathBuf> {
     match canonicalize(path) {
         Ok(canonical) => Ok(canonical),
-        Err(error) => if let Some(parent) = path.parent() {
-            let child = path.strip_prefix(parent).unwrap();
-            safe_canonicalize(parent).map(|canonical_parent| canonical_parent.join(child))
-        } else {
-            Err(error).wrap_err()
-        },
+        Err(error) => {
+            if let Some(parent) = path.parent() {
+                let child = path.strip_prefix(parent).unwrap();
+                safe_canonicalize(parent).map(|canonical_parent| canonical_parent.join(child))
+            } else {
+                Err(error).wrap_err()
+            }
+        }
     }
 }

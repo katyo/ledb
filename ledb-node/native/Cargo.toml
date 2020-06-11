@@ -1,22 +1,23 @@
 [package]
 name = "ledb-node"
-version = "0.3.0"
+version = "0.4.0"
 authors = ["Kayo <kayo@illumium.org>"]
 license = "MIT"
 build = "build.rs"
 exclude = ["artifacts.json", "index.node"]
+edition = "2018"
 
 [lib]
 name = "ledb_node"
 crate-type = ["cdylib"]
 
 [build-dependencies]
-neon-build = "0.3"
+neon-build = "0.4"
 
 [dependencies]
-ledb = "0.3"
-neon = "0.3"
-neon-serde = "0.2"
+ledb = "0.4"
+neon = "0.4"
+neon-serde = "0.4"
 
 [profile.release]
 opt-level = 3

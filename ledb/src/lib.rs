@@ -17,10 +17,6 @@
 ## Usage example
 
 ```rust
-# extern crate ledb;
-# extern crate serde;
-# extern crate serde_json;
-#
 use serde::{Serialize, Deserialize};
 use serde_json::json;
 use ledb::{Storage, Options, IndexKind, KeyType, Filter, Comp, Order, OrderKind, Identifier, Primary, Document, query, query_extr};
@@ -339,27 +335,10 @@ query!(@modify obj ~= extra)
 
 */
 
-extern crate byteorder;
-extern crate ordered_float;
-extern crate serde;
-extern crate lmdb_zero as lmdb;
-extern crate regex;
-extern crate ron;
-extern crate serde_cbor;
-extern crate supercow;
+pub use ledb_types as types;
 
-#[cfg(test)]
-extern crate serde_json;
-
-extern crate dirs;
-extern crate dunce;
-
-pub extern crate ledb_types;
-
-#[cfg(any(feature = "ledb-derive"))]
-#[allow(unused_imports)]
-#[macro_use]
-extern crate ledb_derive;
+#[cfg(feature = "ledb-derive")]
+pub use ledb_derive::Document;
 
 #[cfg(test)]
 #[macro_use]
@@ -383,7 +362,7 @@ mod macros;
 
 pub use ledb_types::{Document, Identifier, IndexKind, KeyField, KeyFields, KeyType, Primary};
 
-#[cfg(any(feature = "ledb-derive"))]
+#[cfg(feature = "ledb-derive")]
 #[doc(hidden)]
 pub use ledb_derive::*;
 
@@ -391,10 +370,10 @@ pub use collection::{Collection, DocumentsIterator};
 pub use document::{to_value, RawDocument, Value};
 pub use error::{Error, Result, ResultWrap};
 pub use filter::{Comp, Cond, Filter, Order, OrderKind};
+pub use macros::*;
 pub use modify::{Action, Modify, WrappedRegex};
 pub use storage::{Info, Options, Stats, Storage};
 pub use value::KeyData;
-pub use macros::*;
 
 use collection::CollectionDef;
 use enumerate::{Enumerable, Serial, SerialGenerator};
@@ -405,13 +384,13 @@ use storage::{DatabaseDef, StorageData};
 
 #[cfg(test)]
 mod tests {
-    use serde::{Serialize, Deserialize};
+    use serde::{Deserialize, Serialize};
     use serde_json::json;
 
     use super::{
-        Collection, Document, Identifier, IndexKind, KeyFields, KeyType, Primary, Result, Value,
+        test::test_db, Collection, Document, Identifier, IndexKind, KeyFields, KeyType, Primary,
+        Result, Value,
     };
-    use test::test_db;
 
     fn get_id(val: Value) -> Option<Primary> {
         if let Value::Map(map) = val {
@@ -490,15 +469,16 @@ mod tests {
         assert_eq!(query!(insert into c &Doc::default()).unwrap(), 2);
         assert_eq!(
             query!(insert into c {
-            "s": "",
-            "b": false,
-            "i": 0,
-            "f": 0.0,
-            "n": {
+                "s": "",
+                "b": false,
                 "i": 0,
-                "a": []
-            }
-        }).unwrap(),
+                "f": 0.0,
+                "n": {
+                    "i": 0,
+                    "a": []
+                }
+            })
+            .unwrap(),
             3
         );
     }

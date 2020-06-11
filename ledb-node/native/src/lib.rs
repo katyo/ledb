@@ -1,10 +1,3 @@
-extern crate ledb;
-
-#[macro_use]
-extern crate neon;
-
-extern crate neon_serde;
-
 #[macro_use]
 mod helper;
 mod collection;

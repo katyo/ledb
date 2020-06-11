@@ -1,3 +1,5 @@
+use std::pin::Pin;
+
 use super::Storage;
 use actix::{dev::ToEnvelope, Addr, Handler, MailboxError, Message};
 use futures::{future::Either, Future};
@@ -18,7 +20,7 @@ pub trait StorageAddrExt<A> {
     fn send_query<M, T, E>(
         &self,
         msg: M,
-    ) -> Box<dyn Future<Item = T, Error = Either<MailboxError, E>> + Send>
+    ) -> Pin<Box<dyn Future<Output = Result<T, Either<MailboxError, E>>> + Send>>
     where
         A: Handler<M> + Send,
         A::Context: ToEnvelope<A, M>,
@@ -26,17 +28,9 @@ pub trait StorageAddrExt<A> {
         T: Send + 'static,
         E: Send + 'static,
     {
-        Box::new(
-            self.get_storage_addr()
-                .send(msg)
-                .map_err(Either::A)
-                .and_then(error_to_b),
-        )
+        let request = self.get_storage_addr().send(msg);
+        Box::pin(async { request.await.map_err(Either::Left)?.map_err(Either::Right) })
     }
-}
-
-fn error_to_b<T, E, W>(res: Result<T, E>) -> Result<T, Either<W, E>> {
-    res.map_err(Either::B)
 }
 
 impl StorageAddrExt<Storage> for Addr<Storage> {

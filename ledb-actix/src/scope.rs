@@ -1,19 +1,14 @@
 use actix::Addr;
 use actix_web::{
     error::{
-        Error, ErrorBadRequest, ErrorInternalServerError, ErrorNotFound, ErrorServiceUnavailable,
+        ErrorBadRequest, ErrorInternalServerError, ErrorNotFound, ErrorServiceUnavailable, Result,
     },
-    HttpRequest, HttpResponse,
-    Scope,
-    web::{Json, Path, Query, Data, scope, resource, get, post, put, delete, patch},
+    web::{delete, get, patch, post, put, resource, scope, Data, Json, Path, Query},
+    HttpRequest, HttpResponse, Scope,
 };
-use futures::{
-    future::{result, Either},
-    Future,
-};
+use serde::{Deserialize, Serialize};
 use serde_with::json::nested as json_str;
 use std::usize;
-use serde::{Serialize, Deserialize};
 
 use super::{
     Delete, Document, DropCollection, DropIndex, EnsureCollection, EnsureIndex, Filter, Find, Get,
@@ -27,86 +22,72 @@ pub type StorageAddr = Addr<Storage>;
 /// Scoped storage adapter for **actix-web**
 pub fn storage() -> Scope {
     scope("")
-        .service(
-            resource("/")
-                .name("usage")
-                .route(get().to(get_usage))
-        )
-        .service(
-            resource("/info")
-                .name("info")
-                .route(get().to_async(get_info))
-        )
-        .service(
-            resource("/stats")
-                .name("stats")
-                .route(get().to_async(get_stats))
-        )
+        .service(resource("/").name("usage").route(get().to(get_usage)))
+        .service(resource("/info").name("info").route(get().to(get_info)))
+        .service(resource("/stats").name("stats").route(get().to(get_stats)))
         .service(
             resource("/collection")
                 .name("collections")
-                .route(get().to_async(get_collections))
-                .route(post().to_async(ensure_collection))
+                .route(get().to(get_collections))
+                .route(post().to(ensure_collection)),
         )
         .service(
             scope("/collection")
                 .service(
                     resource("/{collection}")
                         .name("collection")
-                        .route(delete().to_async(drop_collection))
+                        .route(delete().to(drop_collection))
                         // shortcuts for document methods
-                        .route(post().to_async(insert_document))
-                        .route(get().to_async(find_documents))
-                        .route(patch().to_async(update_documents))
-                        .route(put().to_async(remove_documents))
+                        .route(post().to(insert_document))
+                        .route(get().to(find_documents))
+                        .route(patch().to(update_documents))
+                        .route(put().to(remove_documents)),
                 )
                 .service(
                     scope("/{collection}")
                         .service(
                             resource("/index")
                                 .name("indexes")
-                                .route(get().to_async(get_indexes))
-                                .route(post().to_async(ensure_index))
+                                .route(get().to(get_indexes))
+                                .route(post().to(ensure_index)),
                         )
                         .service(
-                            scope("/index")
-                                .service(
-                                    resource("/{index}")
-                                        .name("index")
-                                        .route(delete().to_async(drop_index))
-                                )
+                            scope("/index").service(
+                                resource("/{index}")
+                                    .name("index")
+                                    .route(delete().to(drop_index)),
+                            ),
                         )
                         .service(
                             resource("/document")
                                 .name("documents")
-                                .route(post().to_async(insert_document))
-                                .route(get().to_async(find_documents))
-                                .route(put().to_async(update_documents))
-                                .route(delete().to_async(remove_documents))
+                                .route(post().to(insert_document))
+                                .route(get().to(find_documents))
+                                .route(put().to(update_documents))
+                                .route(delete().to(remove_documents)),
                         )
                         .service(
-                            scope("/document")
-                                .service(
-                                    resource("/{id}")
-                                        .name("document")
-                                        .route(get().to_async(get_document))
-                                        .route(put().to_async(put_document))
-                                        .route(delete().to_async(delete_document))
-                                )
+                            scope("/document").service(
+                                resource("/{id}")
+                                    .name("document")
+                                    .route(get().to(get_document))
+                                    .route(put().to(put_document))
+                                    .route(delete().to(delete_document)),
+                            ),
                         )
                         .service(
                             resource("/{id}")
                                 .name("document_short")
-                                .route(get().to_async(get_document))
-                                .route(put().to_async(put_document))
-                                .route(delete().to_async(delete_document))
-                        )
-                )
+                                .route(get().to(get_document))
+                                .route(put().to(put_document))
+                                .route(delete().to(delete_document)),
+                        ),
+                ),
         )
 }
 
 /// Usage info handler
-pub fn get_usage(req: HttpRequest) -> String {
+pub async fn get_usage(req: HttpRequest) -> String {
     format!(
         r#"LEDB HTTP interface {version}
 
@@ -196,24 +177,25 @@ See documentation: {documentation}
 }
 
 /// Storage info handler
-pub fn get_info(addr: Data<StorageAddr>) -> impl Future<Item = Json<Info>, Error = Error> {
+pub async fn get_info(addr: Data<StorageAddr>) -> Result<Json<Info>> {
     addr.send(GetInfo)
+        .await
         .map_err(ErrorServiceUnavailable)
         .and_then(|res| res.map(Json).map_err(ErrorInternalServerError))
 }
 
 /// Storage stats handler
-pub fn get_stats(addr: Data<StorageAddr>) -> impl Future<Item = Json<Stats>, Error = Error> {
+pub async fn get_stats(addr: Data<StorageAddr>) -> Result<Json<Stats>> {
     addr.send(GetStats)
+        .await
         .map_err(ErrorServiceUnavailable)
         .and_then(|res| res.map(Json).map_err(ErrorInternalServerError))
 }
 
 /// Storage collections handler
-pub fn get_collections(
-    addr: Data<StorageAddr>,
-) -> impl Future<Item = Json<ListCollections>, Error = Error> {
+pub async fn get_collections(addr: Data<StorageAddr>) -> Result<Json<ListCollections>> {
     addr.send(GetCollections)
+        .await
         .map_err(ErrorServiceUnavailable)
         .and_then(|res| res.map(Json).map_err(ErrorInternalServerError))
 }
@@ -225,38 +207,38 @@ pub struct CollectionParams {
 }
 
 /// Ensure collection handler
-pub fn ensure_collection(
+pub async fn ensure_collection(
     addr: Data<StorageAddr>,
     params: Query<CollectionParams>,
     req: HttpRequest,
-) -> impl Future<Item = HttpResponse, Error = Error> {
+) -> Result<HttpResponse> {
     let CollectionParams { name } = params.into_inner();
     match req.url_for("collection", &[&name]) {
-        Ok(url) => Either::A(
-            addr.send(EnsureCollection(name))
-                .map_err(ErrorServiceUnavailable)
-                .and_then(|res| res.map_err(ErrorInternalServerError))
-                .map(move |res| {
-                    if res {
-                        HttpResponse::Created()
-                    } else {
-                        HttpResponse::Ok()
-                    }.header("location", url.as_str())
-                        .finish()
-                })
-        ),
-        Err(error) => Either::B(
-            result(Err(ErrorBadRequest(format!("Cannot get url for collection ({})", error) /*"Invalid collection name"*/)))
-        )
+        Ok(url) => addr
+            .send(EnsureCollection(name))
+            .await
+            .map_err(ErrorServiceUnavailable)
+            .and_then(|res| res.map_err(ErrorInternalServerError))
+            .map(move |res| {
+                if res {
+                    HttpResponse::Created()
+                } else {
+                    HttpResponse::Ok()
+                }
+                .header("location", url.as_str())
+                .finish()
+            }),
+        Err(error) => Err(ErrorBadRequest(format!(
+            "Cannot get url for collection ({})",
+            error
+        ) /*"Invalid collection name"*/)),
     }
 }
 
 /// Drop collection handler
-pub fn drop_collection(
-    addr: Data<StorageAddr>,
-    coll: Path<String>,
-) -> impl Future<Item = HttpResponse, Error = Error> {
+pub async fn drop_collection(addr: Data<StorageAddr>, coll: Path<String>) -> Result<HttpResponse> {
     addr.send(DropCollection(coll.into_inner()))
+        .await
         .map_err(ErrorServiceUnavailable)
         .and_then(|res| res.map_err(ErrorInternalServerError))
         .and_then(|res| {
@@ -269,50 +251,52 @@ pub fn drop_collection(
 }
 
 /// Get indexes handler
-pub fn get_indexes(
+pub async fn get_indexes(
     addr: Data<StorageAddr>,
     coll: Path<String>,
-) -> impl Future<Item = Json<Vec<KeyField>>, Error = Error> {
+) -> Result<Json<Vec<KeyField>>> {
     addr.send(GetIndexes(coll.into_inner()))
+        .await
         .map_err(ErrorServiceUnavailable)
         .and_then(|res| res.map_err(ErrorInternalServerError))
         .map(|indexes| Json(indexes.into_iter().collect()))
 }
 
 /// Ensure index handler
-pub fn ensure_index(
+pub async fn ensure_index(
     addr: Data<StorageAddr>,
     coll: Path<String>,
     params: Query<KeyField>,
     req: HttpRequest,
-) -> impl Future<Item = HttpResponse, Error = Error> {
+) -> Result<HttpResponse> {
     let KeyField { path, kind, key } = params.into_inner();
     if let Ok(url) = req.url_for("index", &[&coll, &path]) {
-        Either::A(
-            addr.send(EnsureIndex(coll.into_inner(), path, kind, key))
-                .map_err(ErrorServiceUnavailable)
-                .and_then(|res| res.map_err(ErrorInternalServerError))
-                .map(move |res| {
-                    if res {
-                        HttpResponse::Created()
-                    } else {
-                        HttpResponse::Ok()
-                    }.header("location", url.as_str())
-                    .finish()
-                }),
-        )
+        addr.send(EnsureIndex(coll.into_inner(), path, kind, key))
+            .await
+            .map_err(ErrorServiceUnavailable)
+            .and_then(|res| res.map_err(ErrorInternalServerError))
+            .map(move |res| {
+                if res {
+                    HttpResponse::Created()
+                } else {
+                    HttpResponse::Ok()
+                }
+                .header("location", url.as_str())
+                .finish()
+            })
     } else {
-        Either::B(result(Err(ErrorBadRequest("Invalid index name"))))
+        Err(ErrorBadRequest("Invalid index name"))
     }
 }
 
 /// Drop index handler
-pub fn drop_index(
+pub async fn drop_index(
     addr: Data<StorageAddr>,
     path: Path<(String, String)>,
-) -> impl Future<Item = HttpResponse, Error = Error> {
+) -> Result<HttpResponse> {
     let (coll, idx) = path.into_inner();
     addr.send(DropIndex(coll, idx))
+        .await
         .map_err(ErrorServiceUnavailable)
         .and_then(|res| res.map_err(ErrorInternalServerError))
         .and_then(|res| {
@@ -325,19 +309,21 @@ pub fn drop_index(
 }
 
 /// Insert document handler
-pub fn insert_document(
+pub async fn insert_document(
     addr: Data<StorageAddr>,
     coll: Path<String>,
     doc: Json<Value>,
     req: HttpRequest,
-) -> impl Future<Item = HttpResponse, Error = Error> {
+) -> Result<HttpResponse> {
     addr.send(Insert(&*coll, doc.into_inner()))
+        .await
         .map_err(ErrorServiceUnavailable)
         .and_then(|res| res.map_err(ErrorInternalServerError))
         .and_then(move |id| {
             req.url_for("document", &[&coll.into_inner(), &id.to_string()])
                 .map_err(ErrorInternalServerError)
-        }).map(|url| {
+        })
+        .map(|url| {
             HttpResponse::Created()
                 .header("location", url.as_str())
                 .finish()
@@ -360,11 +346,11 @@ pub struct FindParams {
 }
 
 /// Find documents query handler
-pub fn find_documents(
+pub async fn find_documents(
     addr: Data<StorageAddr>,
     coll: Path<String>,
     query: Query<FindParams>,
-) -> impl Future<Item = Json<Vec<Value>>, Error = Error> {
+) -> Result<Json<Vec<Value>>> {
     let FindParams {
         filter,
         order,
@@ -372,6 +358,7 @@ pub fn find_documents(
         length,
     } = query.into_inner();
     addr.send(Find::<_, Value>(coll.into_inner(), filter, order))
+        .await
         .map_err(ErrorServiceUnavailable)
         .and_then(|res| res.map_err(ErrorInternalServerError))
         .and_then(move |docs| {
@@ -380,7 +367,8 @@ pub fn find_documents(
                 .collect::<Result<Vec<_>, _>>()
                 .map_err(ErrorInternalServerError)
                 .map(Json)
-        }).map_err(ErrorInternalServerError)
+        })
+        .map_err(ErrorInternalServerError)
 }
 
 /// Update query parameters
@@ -393,13 +381,14 @@ pub struct UpdateParams {
 }
 
 /// Update documents query handler
-pub fn update_documents(
+pub async fn update_documents(
     addr: Data<StorageAddr>,
     coll: Path<String>,
     query: Query<UpdateParams>,
-) -> impl Future<Item = HttpResponse, Error = Error> {
+) -> Result<HttpResponse> {
     let UpdateParams { filter, modify } = query.into_inner();
     addr.send(Update(coll.into_inner(), filter, modify))
+        .await
         .map_err(ErrorServiceUnavailable)
         .and_then(|res| res.map_err(ErrorInternalServerError))
         .map(|affected_docs| {
@@ -418,11 +407,12 @@ pub struct RemoveParams {
 }
 
 /// Remove documents query handler
-pub fn remove_documents(
+pub async fn remove_documents(
     (addr, coll, query): (Data<StorageAddr>, Path<String>, Query<RemoveParams>),
-) -> impl Future<Item = HttpResponse, Error = Error> {
+) -> Result<HttpResponse> {
     let RemoveParams { filter } = query.into_inner();
     addr.send(Remove(coll.into_inner(), filter))
+        .await
         .map_err(ErrorServiceUnavailable)
         .and_then(|res| res.map_err(ErrorInternalServerError))
         .map(|affected_docs| {
@@ -433,12 +423,13 @@ pub fn remove_documents(
 }
 
 /// Get document handler
-pub fn get_document(
+pub async fn get_document(
     addr: Data<StorageAddr>,
     path: Path<(String, Primary)>,
-) -> impl Future<Item = Json<Value>, Error = Error> {
+) -> Result<Json<Value>> {
     let (coll, id) = path.into_inner();
     addr.send(Get(coll, id))
+        .await
         .map_err(ErrorServiceUnavailable)
         .and_then(|res| res.map_err(ErrorInternalServerError))
         .and_then(|res| {
@@ -458,29 +449,31 @@ pub struct DocumentWithId {
 impl Document for DocumentWithId {}
 
 /// Put document handler
-pub fn put_document(
+pub async fn put_document(
     addr: Data<StorageAddr>,
     path: Path<(String, Primary)>,
     data: Json<Value>,
-) -> impl Future<Item = HttpResponse, Error = Error> {
+) -> Result<HttpResponse> {
     let (coll, id) = path.into_inner();
     let doc = DocumentWithId {
         id,
         val: data.into_inner(),
     };
     addr.send(Put(coll, doc))
+        .await
         .map_err(ErrorServiceUnavailable)
         .and_then(|res| res.map_err(ErrorInternalServerError))
         .map(|_| HttpResponse::NoContent().finish())
 }
 
 /// Delete document handler
-pub fn delete_document(
+pub async fn delete_document(
     addr: Data<StorageAddr>,
     path: Path<(String, Primary)>,
-) -> impl Future<Item = HttpResponse, Error = Error> {
+) -> Result<HttpResponse> {
     let (coll, id) = path.into_inner();
     addr.send(Delete(coll, id))
+        .await
         .map_err(ErrorServiceUnavailable)
         .and_then(|res| res.map_err(ErrorInternalServerError))
         .and_then(|res| {
