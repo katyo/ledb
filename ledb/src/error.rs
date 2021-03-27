@@ -4,6 +4,7 @@ use std::{
     result::Result as StdResult,
     str::Utf8Error,
     sync::PoisonError,
+    error::Error as StdError,
 };
 
 use lmdb::error::Error as DbError;
@@ -33,6 +34,21 @@ impl Display for Error {
             StorageError(s) => write!(f, "Storage error: {}", s),
             IoError(e) => write!(f, "I/O Error: {}", e),
             SyncError(s) => write!(f, "Sync error: {}", s),
+        }
+    }
+}
+
+impl StdError for Error {
+    fn source(&self) -> Option<&(dyn StdError + 'static)> {
+        use Error::*;
+        match self {
+            DocError(_) => None,
+            DbError(e) => Some(e),
+            StrError(e) => Some(e),
+            DataError(e) => Some(e),
+            StorageError(_) => None,
+            IoError(e) => Some(e),
+            SyncError(_) => None,
         }
     }
 }
